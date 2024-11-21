@@ -1,7 +1,11 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"logical-inference/internal/logic"
+)
 
 func main() {
-	fmt.Println("Hello World")
+	var term = logic.NewTerm(logic.Constant, logic.Negation, 5)
+	fmt.Println(term.String())
 }
