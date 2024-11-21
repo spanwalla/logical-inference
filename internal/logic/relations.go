@@ -41,3 +41,9 @@ func NewRelation() Relation {
 		Refs: [4]int{invalidIdx, invalidIdx, invalidIdx, invalidIdx},
 	}
 }
+
+func NewSelfRelation(idx int) Relation {
+	return Relation{
+		Refs: [4]int{idx, invalidIdx, invalidIdx, invalidIdx},
+	}
+}
