@@ -6,6 +6,11 @@ import (
 )
 
 func main() {
-	var term = logic.NewTerm(logic.Constant, logic.Negation, 5)
-	fmt.Println(term.String())
+	var emptyTerm = logic.NewTerm()
+	var term = logic.Term{
+		Type: logic.Function,
+		Op:   logic.Conjunction,
+		Val:  logic.Value(0),
+	}
+	fmt.Println(emptyTerm.String(), term.String())
 }
