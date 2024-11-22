@@ -8,16 +8,10 @@ import (
 	"logical-inference/internal/expression"
 )
 
-// Node представляет узел: Term и его связи.
-type Node struct {
-	Term     expression.Term
-	Relation expression.Relation
-}
-
 // Parser парсит выражение в список узлов.
 type Parser struct {
 	expression string
-	nodes      []Node
+	nodes      []expression.Node
 	operations []expression.Operation
 }
 
@@ -25,13 +19,13 @@ type Parser struct {
 func NewParser(expr string) *Parser {
 	return &Parser{
 		expression: strings.TrimSpace(expr),
-		nodes:      []Node{},
+		nodes:      []expression.Node{},
 		operations: []expression.Operation{},
 	}
 }
 
 // Parse разбивает выражение на узлы (Nodes).
-func (p *Parser) Parse() ([]Node, error) {
+func (p *Parser) Parse() ([]expression.Node, error) {
 	var currentIndex int
 	lastTokenIsOp := false
 
@@ -76,9 +70,9 @@ func (p *Parser) Parse() ([]Node, error) {
 				Op:   expression.Nop,
 				Val:  expression.Value(token - 'a' + 1),
 			}
-			p.nodes = append(p.nodes, Node{
-				Term:     term,
-				Relation: expression.NewSelfRelation(currentIndex),
+			p.nodes = append(p.nodes, expression.Node{
+				Term: term,
+				Rel:  expression.NewSelfRelation(currentIndex),
 			})
 			currentIndex++
 		}
@@ -119,13 +113,13 @@ func (p *Parser) constructNode(currentIndex *int) error {
 	left := p.nodes[len(p.nodes)-1]
 	p.nodes = p.nodes[:len(p.nodes)-1] // Убираем левый операнд
 
-	newNode := Node{
+	newNode := expression.Node{
 		Term: expression.Term{
 			Type: expression.Function,
 			Op:   op,
 			Val:  0,
 		},
-		Relation: expression.NewRelationWithIndices(*currentIndex, left.Relation.Self(), right.Relation.Self(), -1),
+		Rel: expression.NewRelationWithIndices(*currentIndex, left.Rel.Self(), right.Rel.Self(), -1),
 	}
 
 	p.nodes = append(p.nodes, newNode)
@@ -172,4 +166,14 @@ var priorities = map[expression.Operation]int{
 	expression.Xor:         2,
 	expression.Implication: 1,
 	expression.Equivalent:  1,
+}
+
+func (p *Parser) NewExpression() (*expression.Expression, error) {
+	nodes, err := p.Parse()
+	if err != nil {
+		return nil, err
+	}
+
+	expr := expression.NewExpressionWithNodes(nodes)
+	return &expr, nil
 }
