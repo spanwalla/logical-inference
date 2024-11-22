@@ -5,13 +5,13 @@ import (
 	"logical-inference/internal/expression"
 )
 
-func TopologicalSortUtil(v expression.Value, adj [][]expression.Value, visited []bool, stack *list.List) {
+func topologicalSortUtil(v expression.Value, adj [][]expression.Value, visited []bool, stack *list.List) {
 	visited[v] = true
 
 	// Рекурсивный вызов для всех смежных узлов
 	for _, i := range adj[v] {
 		if !visited[i] {
-			TopologicalSortUtil(i, adj, visited, stack)
+			topologicalSortUtil(i, adj, visited, stack)
 		}
 	}
 
@@ -29,7 +29,7 @@ func TopologicalSort(adj [][]expression.Value, size expression.Value) []expressi
 	// Проходим по всем узлам графа
 	for i := expression.Value(0); i < size; i++ {
 		if !visited[i] {
-			TopologicalSortUtil(i, adj, visited, stack)
+			topologicalSortUtil(i, adj, visited, stack)
 		}
 	}
 
@@ -49,7 +49,7 @@ func AddConstraint(term expression.Term, substitution expression.Expression, sub
 	return true
 }
 
-func GetUnification(left, right expression.Expression, substitution map[expression.Value]expression.Expression) bool {
+func GetUnification(left, right expression.Expression, substitution *map[expression.Value]expression.Expression) bool {
 	var sub map[expression.Value]expression.Expression
 
 	right.ChangeVariables(left.MaxValue() + 1)
@@ -118,6 +118,22 @@ func GetUnification(left, right expression.Expression, substitution map[expressi
 		// case 2
 		if lhs.Nodes[0].Term.Type == expression.Constant && rhs.Nodes[0].Term.Type == expression.Variable {
 			if rhs.Nodes[0].Term.Op == expression.Negation {
+				lhs.Nodes[0].Term.Op = expression.Nop
+				if lhs.Nodes[0].Term.Op != expression.Negation {
+					lhs.Nodes[0].Term.Op = expression.Negation
+				}
+			}
+
+			if !AddConstraint(rhs.Nodes[0].Term, lhs, sub) {
+				return false
+			}
+
+			continue
+		}
+
+		// case 3
+		if lhs.Nodes[0].Term.Type == expression.Variable && rhs.Nodes[0].Term.Type == expression.Constant {
+			if lhs.Nodes[0].Term.Op == expression.Negation {
 				rhs.Nodes[0].Term.Op = expression.Nop
 				if rhs.Nodes[0].Term.Op != expression.Negation {
 					rhs.Nodes[0].Term.Op = expression.Negation
@@ -131,33 +147,128 @@ func GetUnification(left, right expression.Expression, substitution map[expressi
 			continue
 		}
 
-		// case 3
-
 		// case 4
+		if lhs.Nodes[0].Term.Type == expression.Variable && rhs.Nodes[0].Term.Type == expression.Variable {
+			if lhs.Nodes[0].Term.Val == rhs.Nodes[0].Term.Val {
+				if lhs.Nodes[0].Term.Op != rhs.Nodes[0].Term.Op {
+					return false
+				}
+				continue
+			}
 
-		// add new variable
-		op := expression.Nop
-		if lhs.Nodes[0].Term.Op == expression.Negation || rhs.Nodes[0].Term.Op == expression.Negation {
-			op = expression.Negation
-		}
+			// add new variable
+			op := expression.Nop
+			if lhs.Nodes[0].Term.Op == expression.Negation || rhs.Nodes[0].Term.Op == expression.Negation {
+				op = expression.Negation
+			}
 
-		term := expression.Term{
-			Type: expression.Variable,
-			Op:   op,
-			Val:  v + 1,
+			term := expression.Term{
+				Type: expression.Variable,
+				Op:   op,
+				Val:  v + 1,
+			}
+			v++
+			expr := expression.NewExpressionWithTerm(term)
+			neg_expr := expr
+			neg_expr.Negation(0)
+
+			if lhs.Nodes[0].Term.Op == expression.Negation {
+				AddConstraint(lhs.Nodes[0].Term, neg_expr, sub)
+			} else {
+				AddConstraint(lhs.Nodes[0].Term, expr, sub)
+			}
+			if rhs.Nodes[0].Term.Op == expression.Negation {
+				AddConstraint(rhs.Nodes[0].Term, neg_expr, sub)
+			} else {
+				AddConstraint(rhs.Nodes[0].Term, expr, sub)
+			}
+
+			continue
 		}
-		v++
-		expr := expression.NewExpressionWithTerm(term)
 
 		// case 5
+		if lhs.Nodes[0].Term.Type == expression.Function {
+			if rhs.Nodes[0].Term.Type != expression.Variable {
+				return false
+			}
+
+			if rhs.Nodes[0].Term.Op == expression.Negation {
+				lhs.Negation(0)
+			}
+
+			if !AddConstraint(rhs.Nodes[0].Term, lhs, sub) {
+				return false
+			}
+			continue
+		}
 
 		// case 6
+		if rhs.Nodes[0].Term.Type == expression.Function {
+			if lhs.Nodes[0].Term.Type != expression.Variable {
+				return false
+			}
+
+			if lhs.Nodes[0].Term.Op == expression.Negation {
+				rhs.Negation(0)
+			}
+
+			if !AddConstraint(lhs.Nodes[0].Term, rhs, sub) {
+				return false
+			}
+			continue
+		}
 
 		return false
 	}
 
-	// ...
-	substitution = sub
+	adjacent := make([][]expression.Value, v-1)
+	for u, expr := range sub {
+		for w := range expr.Variables() {
+			adjacent[w-1] = append(adjacent[w-1], u-1)
+		}
+	}
+
+	order := TopologicalSort(adjacent, v-1)
+	for _, variable := range order {
+		variable := variable + 1
+
+		if _, exists := sub[variable]; !exists {
+			continue
+		}
+
+		expr, _ := sub[variable]
+		if expr.Nodes[0].Term.Type != expression.Function {
+			continue
+		}
+
+		for _, v := range expr.Variables() {
+			if _, exist := sub[v]; !exist {
+				continue
+			}
+			replacement, _ := sub[v]
+			for replacement.Nodes[0].Term.Type == expression.Variable {
+				if _, exists := sub[replacement.Nodes[0].Term.Val]; !exists {
+					break
+				}
+				should_negate := replacement.Nodes[0].Term.Op == expression.Negation
+				replacement, _ := sub[replacement.Nodes[0].Term.Val]
+				if should_negate {
+					replacement.Negation(0)
+				}
+			}
+			toCheck := expression.Term{
+				Type: expression.Variable,
+				Op:   expression.Nop,
+				Val:  v}
+			if replacement.Contains(toCheck) {
+				return false
+			}
+
+			expr.Replace(v, &replacement)
+		}
+	}
+
+	substitution = &sub
 	return true
 }
 
