@@ -1,4 +1,4 @@
-package logic
+package expression
 
 import (
 	"container/list"

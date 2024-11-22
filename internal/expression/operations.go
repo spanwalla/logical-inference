@@ -1,4 +1,4 @@
-package logic
+package expression
 
 type Operation int
 

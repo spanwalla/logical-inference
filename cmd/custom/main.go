@@ -2,31 +2,31 @@ package main
 
 import (
 	"fmt"
-	"logical-inference/internal/logic"
+	"logical-inference/internal/expression"
 )
 
 func main() {
-	var first = logic.Term{
-		Type: logic.Variable,
-		Op:   logic.Nop,
-		Val:  logic.Value(1),
+	var first = expression.Term{
+		Type: expression.Variable,
+		Op:   expression.Nop,
+		Val:  expression.Value(1),
 	}
-	var second = logic.Term{
-		Type: logic.Variable,
-		Op:   logic.Nop,
-		Val:  logic.Value(2),
+	var second = expression.Term{
+		Type: expression.Variable,
+		Op:   expression.Nop,
+		Val:  expression.Value(2),
 	}
-	var third = logic.Term{
-		Type: logic.Variable,
-		Op:   logic.Nop,
-		Val:  logic.Value(3),
+	var third = expression.Term{
+		Type: expression.Variable,
+		Op:   expression.Nop,
+		Val:  expression.Value(3),
 	}
 
-	firstExpr := logic.NewExpressionWithTerm(first)
-	secondExpr := logic.NewExpressionWithTerm(second)
-	thirdExpr := logic.NewExpressionWithTerm(third)
+	firstExpr := expression.NewExpressionWithTerm(first)
+	secondExpr := expression.NewExpressionWithTerm(second)
+	thirdExpr := expression.NewExpressionWithTerm(third)
 
-	midExpr := logic.Construct(&firstExpr, logic.Conjunction, &secondExpr)
-	expr := logic.Construct(&thirdExpr, logic.Implication, &midExpr)
+	midExpr := expression.Construct(&firstExpr, expression.Conjunction, &secondExpr)
+	expr := expression.Construct(&thirdExpr, expression.Implication, &midExpr)
 	fmt.Println(expr.String(), expr)
 }

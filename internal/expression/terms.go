@@ -1,4 +1,4 @@
-package logic
+package expression
 
 import (
 	"logical-inference/internal/pkg/alphabet"
