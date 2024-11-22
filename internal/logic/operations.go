@@ -15,7 +15,7 @@ const (
 var operationNames = map[Operation]string{
 	Nop:         "Nop",
 	Negation:    "!",
-	Implication: "→",
+	Implication: ">",
 	Disjunction: "*",
 	Conjunction: "*",
 	Xor:         "+",

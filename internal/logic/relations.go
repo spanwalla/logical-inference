@@ -3,10 +3,10 @@ package logic
 import "fmt"
 
 const (
-	SelfIndex = iota
-	LeftIndex
-	RightIndex
-	ParentIndex
+	SelfIdx = iota
+	LeftIdx
+	RightIdx
+	ParentIdx
 )
 
 type Relation struct {
@@ -21,19 +21,19 @@ func (r Relation) getRef(index int) int {
 }
 
 func (r Relation) Self() int {
-	return r.getRef(SelfIndex)
+	return r.getRef(SelfIdx)
 }
 
 func (r Relation) Left() int {
-	return r.getRef(LeftIndex)
+	return r.getRef(LeftIdx)
 }
 
 func (r Relation) Right() int {
-	return r.getRef(RightIndex)
+	return r.getRef(RightIdx)
 }
 
 func (r Relation) Parent() int {
-	return r.getRef(ParentIndex)
+	return r.getRef(ParentIdx)
 }
 
 func NewRelation() Relation {
@@ -45,5 +45,11 @@ func NewRelation() Relation {
 func NewSelfRelation(idx int) Relation {
 	return Relation{
 		Refs: [4]int{idx, invalidIdx, invalidIdx, invalidIdx},
+	}
+}
+
+func NewRelationWithIndices(self, left, right, parent int) Relation {
+	return Relation{
+		Refs: [4]int{self, left, right, parent},
 	}
 }
