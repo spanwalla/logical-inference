@@ -18,7 +18,7 @@ type Expression struct {
 
 func NewExpression() Expression {
 	return Expression{
-		nodes: []Node{},
+		nodes: make([]Node, 0),
 		rep:   "",
 		mod:   true,
 	}
@@ -27,6 +27,8 @@ func NewExpression() Expression {
 func NewExpressionWithTerm(term Term) Expression {
 	return Expression{
 		nodes: []Node{{Term: term, Rel: NewSelfRelation(0)}},
+		rep:   "",
+		mod:   true,
 	}
 }
 
@@ -47,7 +49,7 @@ func NewExpressionWithNodes(nodes []Node) Expression {
 }
 
 func (e *Expression) inRange(idx int) bool {
-	return idx < len(e.nodes)
+	return idx >= 0 && idx < len(e.nodes)
 }
 
 func (e *Expression) updateRep() {
@@ -419,11 +421,11 @@ func Construct(lhs *Expression, op Operation, rhs *Expression) Expression {
 	expr := NewExpression()
 	expr.nodes = append(expr.nodes, Node{
 		Term: Term{Function, op, Value(0)},
-		Rel:  NewRelationWithIndices(0, 1, 1+lhs.Size(), invalidIdx),
+		Rel:  NewRelationWithIndices(0, 1, lhs.Size()+1, invalidIdx),
 	})
 
 	processNodes := func(nodes []Node, offset int) {
-		for _, node := range lhs.nodes {
+		for _, node := range nodes {
 			expr.nodes = append(expr.nodes, node)
 
 			for i := range len(expr.nodes[len(expr.nodes)-1].Rel.Refs) {

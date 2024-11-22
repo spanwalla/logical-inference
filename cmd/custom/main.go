@@ -6,11 +6,27 @@ import (
 )
 
 func main() {
-	var emptyTerm = logic.NewTerm()
-	var term = logic.Term{
-		Type: logic.Function,
-		Op:   logic.Conjunction,
-		Val:  logic.Value(0),
+	var first = logic.Term{
+		Type: logic.Variable,
+		Op:   logic.Nop,
+		Val:  logic.Value(1),
 	}
-	fmt.Println(emptyTerm.String(), term.String())
+	var second = logic.Term{
+		Type: logic.Variable,
+		Op:   logic.Nop,
+		Val:  logic.Value(2),
+	}
+	var third = logic.Term{
+		Type: logic.Variable,
+		Op:   logic.Nop,
+		Val:  logic.Value(3),
+	}
+
+	firstExpr := logic.NewExpressionWithTerm(first)
+	secondExpr := logic.NewExpressionWithTerm(second)
+	thirdExpr := logic.NewExpressionWithTerm(third)
+
+	midExpr := logic.Construct(&firstExpr, logic.Conjunction, &secondExpr)
+	expr := logic.Construct(&thirdExpr, logic.Implication, &midExpr)
+	fmt.Println(expr.String(), expr)
 }
