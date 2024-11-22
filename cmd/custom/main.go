@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"logical-inference/internal/expression"
+	"logical-inference/internal/solver"
 )
 
 func main() {
@@ -29,4 +30,21 @@ func main() {
 	midExpr := expression.Construct(&firstExpr, expression.Conjunction, &secondExpr)
 	expr := expression.Construct(&thirdExpr, expression.Implication, &midExpr)
 	fmt.Println(expr.String(), expr)
+
+	axioms := []expression.Expression{
+		firstExpr,
+		midExpr,
+		expr,
+	}
+	slv, err := solver.New(axioms, secondExpr, 60000)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	defer func(slv *solver.Solver) {
+		err := slv.Close()
+		if err != nil {
+
+		}
+	}(slv)
 }
