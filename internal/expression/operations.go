@@ -16,7 +16,7 @@ var operationNames = map[Operation]string{
 	Nop:         "Nop",
 	Negation:    "!",
 	Implication: ">",
-	Disjunction: "*",
+	Disjunction: "|",
 	Conjunction: "*",
 	Xor:         "+",
 	Equivalent:  "=",
