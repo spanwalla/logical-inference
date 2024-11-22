@@ -9,10 +9,7 @@ import (
 )
 
 // Node представляет узел: Term и его связи.
-type Node struct {
-	Term     expression.Term
-	Relation expression.Relation
-}
+type Node expression.Node
 
 // Parser парсит выражение в список узлов.
 type Parser struct {
@@ -32,7 +29,9 @@ func NewParser(expr string) *Parser {
 
 // Parse разбивает выражение на узлы (Nodes).
 func (p *Parser) Parse() ([]Node, error) {
+	//fmt.Println("enter parse")
 	var currentIndex int
+	fmt.Println(currentIndex)
 	lastTokenIsOp := false
 
 	for _, token := range p.expression {
@@ -67,6 +66,7 @@ func (p *Parser) Parse() ([]Node, error) {
 			}
 			p.operations = append(p.operations, op)
 		default:
+			//fmt.Println("Space found2")
 			if !unicode.IsLetter(token) {
 				return nil, fmt.Errorf("неверный символ: %c", token)
 			}
@@ -77,8 +77,8 @@ func (p *Parser) Parse() ([]Node, error) {
 				Val:  expression.Value(token - 'a' + 1),
 			}
 			p.nodes = append(p.nodes, Node{
-				Term:     term,
-				Relation: expression.NewSelfRelation(currentIndex),
+				Term: term,
+				Rel:  expression.NewSelfRelation(currentIndex),
 			})
 			currentIndex++
 		}
@@ -125,7 +125,7 @@ func (p *Parser) constructNode(currentIndex *int) error {
 			Op:   op,
 			Val:  0,
 		},
-		Relation: expression.NewRelationWithIndices(*currentIndex, left.Relation.Self(), right.Relation.Self(), -1),
+		Rel: expression.NewRelationWithIndices(*currentIndex, left.Rel.Self(), right.Rel.Self(), -1),
 	}
 
 	p.nodes = append(p.nodes, newNode)
@@ -142,6 +142,7 @@ func isOperation(token rune) bool {
 // determineOperation определяет операцию из символа.
 func determineOperation(token rune) expression.Operation {
 	if op, ok := charToOp[token]; ok {
+
 		return op
 	}
 	return expression.Nop
@@ -150,6 +151,7 @@ func determineOperation(token rune) expression.Operation {
 // priority возвращает приоритет операции.
 func priority(op expression.Operation) int {
 	if pr, ok := priorities[op]; ok {
+		fmt.Print(op, pr)
 		return pr
 	}
 	return 0
@@ -168,8 +170,8 @@ var priorities = map[expression.Operation]int{
 	expression.Nop:         0,
 	expression.Negation:    5,
 	expression.Conjunction: 3,
-	expression.Disjunction: 2,
+	expression.Disjunction: 1,
 	expression.Xor:         2,
-	expression.Implication: 1,
-	expression.Equivalent:  1,
+	expression.Implication: 4,
+	expression.Equivalent:  2,
 }
