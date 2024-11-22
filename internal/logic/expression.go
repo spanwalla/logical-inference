@@ -59,8 +59,32 @@ func (e *Expression) updateRep() {
 
 	var builder strings.Builder
 
-	// TODO: Закончить
+	traverse := func() func(root Relation) {
+		var f func(root Relation)
+		f = func(root Relation) {
+			if root.Self() == invalidIdx {
+				return
+			}
 
+			brackets := root.Parent() != invalidIdx && e.nodes[root.Self()].Term.Type == Function
+			if brackets {
+				builder.WriteString("(")
+			}
+
+			f(e.Subtree(root.Left()))
+			builder.WriteString(e.nodes[root.Self()].Term.String())
+			f(e.Subtree(root.Right()))
+
+			if brackets {
+				builder.WriteString(")")
+			}
+
+			return
+		}
+		return f
+	}()
+
+	traverse(e.Subtree(0))
 	e.rep = builder.String()
 	e.mod = false
 }
@@ -371,7 +395,7 @@ func (e *Expression) Replace(val Value, expr *Expression) Expression {
 		for i := 1; i < replacement.Size(); i++ {
 			e.nodes = append(e.nodes, replacement.nodes[i])
 
-			for j := range e.nodes[len(e.nodes)-1].Rel.Refs {
+			for j := range len(e.nodes[len(e.nodes)-1].Rel.Refs) {
 				e.nodes[len(e.nodes)-1].Rel.Refs[j] = increaseIdx(e.nodes[len(e.nodes)-1].Rel.Refs[j], offset-1)
 			}
 		}
@@ -391,9 +415,56 @@ func (e *Expression) Replace(val Value, expr *Expression) Expression {
 }
 
 func Construct(lhs *Expression, op Operation, rhs *Expression) Expression {
-	return NewExpression()
+	offset := 1
+	expr := NewExpression()
+	expr.nodes = append(expr.nodes, Node{
+		Term: Term{Function, op, Value(0)},
+		Rel:  NewRelationWithIndices(0, 1, 1+lhs.Size(), invalidIdx),
+	})
+
+	processNodes := func(nodes []Node, offset int) {
+		for _, node := range lhs.nodes {
+			expr.nodes = append(expr.nodes, node)
+
+			for i := range len(expr.nodes[len(expr.nodes)-1].Rel.Refs) {
+				expr.nodes[len(expr.nodes)-1].Rel.Refs[i] = increaseIdx(expr.nodes[len(expr.nodes)-1].Rel.Refs[i], offset)
+			}
+
+			if expr.nodes[len(expr.nodes)-1].Rel.Parent() == invalidIdx {
+				expr.nodes[len(expr.nodes)-1].Rel.Refs[ParentIdx] = 0
+			}
+		}
+	}
+
+	processNodes(lhs.nodes, offset)
+	offset += lhs.Size()
+	processNodes(rhs.nodes, offset)
+
+	expr.mod = true
+	return expr
 }
 
-func (e *Expression) Equals(rhs Expression, varIgnore bool) bool {
+func (e *Expression) Equals(other *Expression, varIgnore bool) bool {
+	if e.Size() != other.Size() {
+		return false
+	}
+
+	for i := 1; i < e.Size(); i++ {
+		if (e.nodes[i].Term.Type == Function) != (other.nodes[i].Term.Type == Function) {
+			return false
+		}
+
+		if e.nodes[i].Term.Type == Function && e.nodes[i].Term.Op != other.nodes[i].Term.Op {
+			return false
+		}
+
+		if !varIgnore && e.nodes[i].Term.Type != other.nodes[i].Term.Type {
+			return false
+		}
+
+		if e.nodes[i].Term.Val != other.nodes[i].Term.Val || e.nodes[i].Term.Op != other.nodes[i].Term.Op {
+			return false
+		}
+	}
 	return true
 }
