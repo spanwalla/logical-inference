@@ -19,7 +19,7 @@ func topologicalSortUtil(v expression.Value, adj [][]expression.Value, visited [
 	stack.PushFront(v)
 }
 
-// Основная функция топологической сортировки
+// TopologicalSort Основная функция топологической сортировки
 func TopologicalSort(adj [][]expression.Value, size expression.Value) []expression.Value {
 	// stack := []expression.Value{}
 	stack := list.New()
@@ -169,16 +169,16 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 			}
 			v++
 			expr := expression.NewExpressionWithTerm(term)
-			neg_expr := expr
-			neg_expr.Negation(0)
+			negExpr := expr
+			negExpr.Negation(0)
 
 			if lhs.Nodes[0].Term.Op == expression.Negation {
-				AddConstraint(lhs.Nodes[0].Term, neg_expr, sub)
+				AddConstraint(lhs.Nodes[0].Term, negExpr, sub)
 			} else {
 				AddConstraint(lhs.Nodes[0].Term, expr, sub)
 			}
 			if rhs.Nodes[0].Term.Op == expression.Negation {
-				AddConstraint(rhs.Nodes[0].Term, neg_expr, sub)
+				AddConstraint(rhs.Nodes[0].Term, negExpr, sub)
 			} else {
 				AddConstraint(rhs.Nodes[0].Term, expr, sub)
 			}
@@ -250,9 +250,9 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 				if _, exists := sub[replacement.Nodes[0].Term.Val]; !exists {
 					break
 				}
-				should_negate := replacement.Nodes[0].Term.Op == expression.Negation
+				shouldNegate := replacement.Nodes[0].Term.Op == expression.Negation
 				replacement, _ := sub[replacement.Nodes[0].Term.Val]
-				if should_negate {
+				if shouldNegate {
 					replacement.Negation(0)
 				}
 			}
