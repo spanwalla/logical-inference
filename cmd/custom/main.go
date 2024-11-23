@@ -8,6 +8,26 @@ import (
 )
 
 func main() {
+	term := expression.Term{
+		expression.Variable,
+		expression.Nop,
+		expression.Value(1),
+	}
+
+	sterm := expression.Term{
+		expression.Variable,
+		expression.Nop,
+		expression.Value(2),
+	}
+
+	e := expression.NewExpressionWithTerm(term)
+	es := expression.NewExpressionWithTerm(sterm)
+
+	ef := expression.Construct(&es, expression.Implication, &e)
+
+	eg := expression.Construct(&e, expression.Implication, &ef)
+	fmt.Println(eg)
+
 	newParsers := []parser.Parser{
 		parser.NewParser("a>(b>a)"),
 		parser.NewParser("(a>(b>c))>((a>b)>(a>c))"),
@@ -29,13 +49,18 @@ func main() {
 			return
 		}
 		axioms = append(axioms, expr)
+		fmt.Println(expr)
+		fmt.Println(expr.String())
 	}
+
+	fmt.Println(target)
+
 	slv, err := solver.New(axioms, target, 60000)
 	if err != nil {
 		fmt.Println(err)
 	}
-	slv.Solve()
-	fmt.Println(slv.ThoughtChain())
+	// slv.Solve()
+	// fmt.Println(slv.ThoughtChain())
 	defer func(slv solver.Solver) {
 		err := slv.Close()
 		if err != nil {
