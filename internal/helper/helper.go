@@ -34,7 +34,9 @@ func TopologicalSort(adj [][]expression.Value, size expression.Value) []expressi
 	}
 
 	for stack.Len() > 0 {
-		order = append(order, stack.Front().Value.(expression.Value))
+		el := stack.Front()
+		order = append(order, el.Value.(expression.Value))
+		stack.Remove(el)
 	}
 
 	return order
@@ -56,8 +58,8 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 	v := right.MaxValue() + 1
 
 	exprQueue := list.New()
-	expr := [2]int{left.Subtree(0).Self(), left.Subtree(0).Self()}
-	exprQueue.PushBack(expr)
+	exprEl := [2]int{left.Subtree(0).Self(), left.Subtree(0).Self()}
+	exprQueue.PushBack(exprEl)
 
 	var lhs, rhs expression.Expression
 
@@ -65,10 +67,8 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 		el := exprQueue.Front()
 		exprQueue.Remove(el)
 
-		leftIdx := el.Value.([2]int)[0]
-		rightIdx := el.Value.([2]int)[1]
-		leftTerm := left.Nodes[leftIdx].Term
-		rightTerm := right.Nodes[rightIdx].Term
+		leftIdx, rightIdx := el.Value.([2]int)[0], el.Value.([2]int)[1]
+		leftTerm, rightTerm := left.Nodes[leftIdx].Term, right.Nodes[rightIdx].Term
 
 		// case 0
 		if leftTerm.Type == expression.Function && rightTerm.Type == expression.Function {
@@ -223,14 +223,14 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 
 	adjacent := make([][]expression.Value, v-1)
 	for u, expr := range sub {
-		for w := range expr.Variables() {
+		for _, w := range expr.Variables() {
 			adjacent[w-1] = append(adjacent[w-1], u-1)
 		}
 	}
 
 	order := TopologicalSort(adjacent, v-1)
 	for _, variable := range order {
-		variable := variable + 1
+		variable = variable + 1
 
 		if _, exists := sub[variable]; !exists {
 			continue
@@ -268,7 +268,7 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 		}
 	}
 
-	substitution = &sub
+	*substitution = sub
 	return true
 }
 
