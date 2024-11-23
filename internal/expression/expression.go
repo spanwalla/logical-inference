@@ -32,14 +32,6 @@ func NewExpressionWithTerm(term Term) Expression {
 	}
 }
 
-func NewExpressionWithStringExpression(expr string) Expression {
-	return Expression{
-		nodes: []Node{}, // TODO: Заменить на вызов ExpressionAnalyzer, когда он будет готов
-		rep:   "",
-		mod:   true,
-	}
-}
-
 func NewExpressionWithNodes(nodes []Node) Expression {
 	return Expression{
 		nodes: nodes,
