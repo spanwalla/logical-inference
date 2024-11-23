@@ -251,6 +251,9 @@ func (s *Solver) Solve() {
 		prev := s.targets[len(s.targets)-2]
 		curr := s.targets[len(s.targets)-1]
 		axiom := s.axioms[len(s.axioms)-1]
+		fmt.Println(prev.String())
+		fmt.Println(curr.String())
+		fmt.Println(axiom.String())
 		//fmt.Fprintf(&s.ss, "deduction theorem: Γ ⊢ %s <=> Γ U { %s } ⊢ %s\n", prev.String(), axiom.String(), curr.String())
 		s.builder.WriteString(fmt.Sprintf("deduction theorem: Γ ⊢ %s <=> Γ U { %s } ⊢ %s\n", prev.String(), axiom.String(), curr.String()))
 	}

@@ -179,7 +179,9 @@ func determineOperand(token rune) expression.Term {
 	if !('a' <= token && token <= 'z') {
 		panic("неправильное имя переменной")
 	}
-	return expression.Term{Type: expression.Variable,
-		Op:  expression.Nop,
-		Val: expression.Value(token - 'a' + 1)}
+	return expression.Term{
+		Type: expression.Variable,
+		Op:   expression.Nop,
+		Val:  expression.Value(token - 'a' + 1),
+	}
 }

@@ -142,12 +142,12 @@ func (e *Expression) MaxValue() Value {
 
 func (e *Expression) MinValue() Value {
 	var value = Value(-1)
-	for _, node := range e.Nodes {
-		if node.Term.Type == Variable {
+	for i := range len(e.Nodes) {
+		if e.Nodes[i].Term.Type == Variable {
 			if value == -1 {
-				value = node.Term.Val
+				value = e.Nodes[i].Term.Val
 			}
-			value = min(value, node.Term.Val)
+			value = min(value, e.Nodes[i].Term.Val)
 		}
 	}
 	return value
@@ -185,11 +185,11 @@ func (e *Expression) Normalize() {
 		newVal++
 	}
 
-	for _, node := range e.Nodes {
-		if node.Term.Type == Variable {
+	for i := range len(e.Nodes) {
+		if e.Nodes[i].Term.Type == Variable {
 			continue
 		}
-		node.Term.Val = remapping[node.Term.Val]
+		e.Nodes[i].Term.Val = remapping[e.Nodes[i].Term.Val]
 	}
 	e.mod = true
 }
@@ -226,9 +226,9 @@ func (e *Expression) Standardize() {
 }
 
 func (e *Expression) MakeConst() {
-	for _, node := range e.Nodes {
-		if node.Term.Type == Variable {
-			node.Term.Type = Constant
+	for i := range len(e.Nodes) {
+		if e.Nodes[i].Term.Type == Variable {
+			e.Nodes[i].Term.Type = Constant
 		}
 	}
 	e.mod = true
@@ -265,14 +265,13 @@ func (e *Expression) CopySubtree(idx int) Expression {
 	}()
 
 	traverse(e.Subtree(newRootIdx))
-	e.Nodes[0].Rel.Refs[ParentIdx] = invalidIdx
+	nodes[0].Rel.Refs[ParentIdx] = invalidIdx
 
-	for _, node := range nodes {
-		for _, ref := range node.Rel.Refs {
-			if _, ok := remapping[ref]; !ok {
-				continue
+	for j := range len(nodes) {
+		for k := range len(nodes[j].Rel.Refs) {
+			if ref, ok := remapping[nodes[j].Rel.Refs[k]]; ok {
+				nodes[j].Rel.Refs[k] = ref
 			}
-			ref = remapping[ref]
 		}
 	}
 	return NewExpressionWithNodes(nodes)
@@ -349,9 +348,9 @@ func (e *Expression) Negation(idx int) {
 
 func (e *Expression) ChangeVariables(bound Value) {
 	bound -= e.MinValue()
-	for _, node := range e.Nodes {
-		if node.Term.Type == Variable {
-			node.Term.Val += bound
+	for i := range len(e.Nodes) {
+		if e.Nodes[i].Term.Type == Variable {
+			e.Nodes[i].Term.Val += bound
 		}
 	}
 	e.mod = true
