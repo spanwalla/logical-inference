@@ -2,128 +2,160 @@ package parser
 
 import (
 	"fmt"
-	"strings"
-	"unicode"
-
 	"logical-inference/internal/expression"
+	"unicode"
 )
+
+type Token int
+
+const (
+	Nop Token = iota
+	Negation
+	Implication
+	Disjunction
+	Conjunction
+	Xor
+	Equivalent
+	OpenBracket
+	CloseBracket
+)
+
+var priorities = map[Token]int{
+	Nop:          0,
+	Negation:     5,
+	Implication:  1,
+	Disjunction:  3,
+	Conjunction:  4,
+	Xor:          2,
+	Equivalent:   2,
+	OpenBracket:  0,
+	CloseBracket: 0,
+}
+
+var tokenToOperation = map[Token]expression.Operation{
+	Nop:         expression.Nop,
+	Negation:    expression.Negation,
+	Implication: expression.Implication,
+	Disjunction: expression.Disjunction,
+	Conjunction: expression.Conjunction,
+	Xor:         expression.Xor,
+	Equivalent:  expression.Equivalent,
+}
+
+var opToToken = map[expression.Operation]Token{
+	expression.Nop:         Nop,
+	expression.Negation:    Negation,
+	expression.Implication: Implication,
+	expression.Disjunction: Disjunction,
+	expression.Conjunction: Conjunction,
+	expression.Xor:         Xor,
+	expression.Equivalent:  Equivalent,
+}
+
+var charToOp = map[rune]expression.Operation{
+	'0': expression.Nop,
+	'!': expression.Negation,
+	'|': expression.Disjunction,
+	'*': expression.Conjunction,
+	'>': expression.Implication,
+	'+': expression.Xor,
+	'=': expression.Equivalent,
+}
 
 // Parser парсит выражение в список узлов.
 type Parser struct {
+	brackets   int32
 	expression string
-	nodes      []expression.Node
-	operations []expression.Operation
+	operands   []expression.Expression
+	operations []Token
 }
 
 // NewParser создает новый парсер для логических выражений.
-func NewParser(expr string) *Parser {
-	return &Parser{
-		expression: strings.TrimSpace(expr),
-		nodes:      []expression.Node{},
-		operations: []expression.Operation{},
+func NewParser(expr string) Parser {
+	return Parser{
+		brackets:   0,
+		expression: expr,
+		operands:   []expression.Expression{},
+		operations: []Token{},
 	}
 }
 
 // Parse разбивает выражение на узлы (Nodes).
-func (p *Parser) Parse() ([]expression.Node, error) {
-	var currentIndex int
-	lastTokenIsOp := false
-
-	for _, token := range p.expression {
-		if unicode.IsSpace(token) {
+func (p *Parser) Parse() (expression.Expression, error) {
+	last_token_is_op := false
+	for _, t := range p.expression {
+		if unicode.IsSpace(t) {
 			continue
 		}
-
-		switch {
-		case token == '(':
-			p.operations = append(p.operations, expression.Nop) // Открывающая скобка как заглушка
-			lastTokenIsOp = false
-		case token == ')':
-			for len(p.operations) > 0 && p.operations[len(p.operations)-1] != expression.Nop {
-				if err := p.constructNode(&currentIndex); err != nil {
-					return nil, err
-				}
+		if t == '(' {
+			p.operations = append(p.operations, OpenBracket)
+			last_token_is_op = false
+			continue
+		}
+		if t == ')' {
+			if len(p.operations) == 0 {
+				return expression.Expression{}, fmt.Errorf("Неправильные скобки")
 			}
-			if len(p.operations) > 0 {
-				p.operations = p.operations[:len(p.operations)-1] // Убираем скобку
+			for len(p.operations) != 0 && p.operations[len(p.operations)-1] != OpenBracket {
+				p.constructNode()
 			}
-			lastTokenIsOp = false
-		case isOperation(token):
-			op := determineOperation(token)
-			if lastTokenIsOp && op != expression.Negation {
-				return nil, fmt.Errorf("ошибка: два оператора подряд")
+			p.operations = p.operations[:len(p.operations)-1]
+			last_token_is_op = false
+			continue
+		}
+		if isOperation(t) {
+			op := determineOperation(t)
+			if op == expression.Negation {
+				p.operations = append(p.operations, opToToken[op])
+				continue
 			}
-			lastTokenIsOp = true
-			for len(p.operations) > 0 && priority(p.operations[len(p.operations)-1]) >= priority(op) {
-				if err := p.constructNode(&currentIndex); err != nil {
-					return nil, err
-				}
+			if last_token_is_op {
+				return expression.Expression{}, fmt.Errorf("incorrect input")
 			}
-			p.operations = append(p.operations, op)
-		default:
-			if !unicode.IsLetter(token) {
-				return nil, fmt.Errorf("неверный символ: %c", token)
+			last_token_is_op = true
+			for len(p.operations) != 0 && priorities[p.operations[len(p.operations)-1]] > priorities[opToToken[op]] {
+				p.constructNode()
 			}
-			lastTokenIsOp = false
-			term := expression.Term{
-				Type: expression.Variable,
-				Op:   expression.Nop,
-				Val:  expression.Value(token - 'a' + 1),
-			}
-			p.nodes = append(p.nodes, expression.Node{
-				Term: term,
-				Rel:  expression.NewSelfRelation(currentIndex),
-			})
-			currentIndex++
+			p.operations = append(p.operations, opToToken[op])
+		} else {
+			last_token_is_op = false
+			p.operands = append(p.operands, expression.NewExpressionWithTerm(determineOperand(t)))
 		}
 	}
-
-	for len(p.operations) > 0 {
-		if err := p.constructNode(&currentIndex); err != nil {
-			return nil, err
-		}
+	for len(p.operations) != 0 {
+		p.constructNode()
 	}
-
-	return p.nodes, nil
+	return p.operands[len(p.operands)-1], nil
 }
 
 // constructNode создает новый узел из текущих операций и операндов.
-func (p *Parser) constructNode(currentIndex *int) error {
-	if len(p.operations) == 0 || len(p.nodes) < 1 {
-		return fmt.Errorf("недостаточно данных для создания узла")
-	}
+func (p *Parser) constructNode() error {
+	if p.operations[len(p.operations)-1] == Negation {
+		operand := p.operands[len(p.operations)-1]
+		p.operands = p.operands[:len(p.operands)-1]
+		p.operations = p.operations[:len(p.operations)-1]
 
-	op := p.operations[len(p.operations)-1]
-	p.operations = p.operations[:len(p.operations)-1] // Убираем операцию
-
-	if op == expression.Negation {
-		// Унарная операция
-		node := &p.nodes[len(p.nodes)-1]
-		node.Term.Op = expression.Negation
+		operand.Negation(0)
+		p.operands = append(p.operands, operand)
 		return nil
 	}
 
-	if len(p.nodes) < 2 {
-		return fmt.Errorf("недостаточно операндов для бинарной операции")
+	if len(p.operands) < 2 || len(p.operations) < 1 {
+		if p.operations[len(p.operations)-1] == OpenBracket || p.operations[len(p.operations)-1] == CloseBracket {
+			return fmt.Errorf("Неправильные скобки")
+		}
+		return fmt.Errorf("Что-то пошло не так при формировании узла")
 	}
 
-	// Бинарная операция
-	right := p.nodes[len(p.nodes)-1]
-	p.nodes = p.nodes[:len(p.nodes)-1] // Убираем правый операнд
-	left := p.nodes[len(p.nodes)-1]
-	p.nodes = p.nodes[:len(p.nodes)-1] // Убираем левый операнд
+	//извлекаем узлы
+	rhs := p.operands[len(p.operands)-1]
+	p.operands = p.operands[:len(p.operands)-1]
+	op := p.operations[len(p.operations)-1]
+	p.operations = p.operations[:len(p.operations)-1]
+	lhs := p.operands[len(p.operands)-1]
+	p.operands = p.operands[:len(p.operands)-1]
 
-	newNode := expression.Node{
-		Term: expression.Term{
-			Type: expression.Function,
-			Op:   op,
-			Val:  0,
-		},
-		Rel: expression.NewRelationWithIndices(*currentIndex, left.Rel.Self(), right.Rel.Self(), -1),
-	}
-
-	p.nodes = append(p.nodes, newNode)
-	*currentIndex++
+	p.operands = append(p.operands, expression.Construct(&lhs, tokenToOperation[op], &rhs))
 	return nil
 }
 
@@ -141,39 +173,11 @@ func determineOperation(token rune) expression.Operation {
 	return expression.Nop
 }
 
-// priority возвращает приоритет операции.
-func priority(op expression.Operation) int {
-	if pr, ok := priorities[op]; ok {
-		return pr
+func determineOperand(token rune) expression.Term {
+	if !('a' <= token && token <= 'z') {
+		fmt.Errorf("Неправильное имя переменной")
 	}
-	return 0
-}
-
-var charToOp = map[rune]expression.Operation{
-	'!': expression.Negation,
-	'|': expression.Disjunction,
-	'*': expression.Conjunction,
-	'>': expression.Implication,
-	'+': expression.Xor,
-	'=': expression.Equivalent,
-}
-
-var priorities = map[expression.Operation]int{
-	expression.Nop:         0,
-	expression.Negation:    5,
-	expression.Conjunction: 3,
-	expression.Disjunction: 2,
-	expression.Xor:         2,
-	expression.Implication: 1,
-	expression.Equivalent:  1,
-}
-
-func (p *Parser) NewExpression() (*expression.Expression, error) {
-	nodes, err := p.Parse()
-	if err != nil {
-		return nil, err
-	}
-
-	expr := expression.NewExpressionWithNodes(nodes)
-	return &expr, nil
+	return expression.Term{Type: expression.Variable,
+		Op:  expression.Nop,
+		Val: expression.Value(token - 'a' + 1)}
 }
