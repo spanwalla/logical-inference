@@ -165,7 +165,7 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 			term := expression.Term{
 				Type: expression.Variable,
 				Op:   op,
-				Val:  v + 1,
+				Val:  v,
 			}
 			v++
 			expr := expression.NewExpressionWithTerm(term)
