@@ -3,30 +3,43 @@ package main
 import (
 	"fmt"
 	"logical-inference/internal/expression"
+	"logical-inference/internal/parser"
+	"logical-inference/internal/solver"
 )
 
 func main() {
-	var first = expression.Term{
-		Type: expression.Variable,
-		Op:   expression.Nop,
-		Val:  expression.Value(1),
-	}
-	var second = expression.Term{
-		Type: expression.Variable,
-		Op:   expression.Nop,
-		Val:  expression.Value(2),
-	}
-	var third = expression.Term{
-		Type: expression.Variable,
-		Op:   expression.Nop,
-		Val:  expression.Value(3),
+	newParsers := []parser.Parser{
+		parser.NewParser("a>(b>a)"),
+		parser.NewParser("(a>(b>c))>((a>b)>(a>c))"),
+		parser.NewParser("(!a>!b)>((!a>b)>a)"),
 	}
 
-	firstExpr := expression.NewExpressionWithTerm(first)
-	secondExpr := expression.NewExpressionWithTerm(second)
-	thirdExpr := expression.NewExpressionWithTerm(third)
+	axioms := make([]expression.Expression, 0, len(newParsers))
+	targetParser := parser.NewParser("a*b>b")
+	target, err := targetParser.Parse()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 
-	midExpr := expression.Construct(&firstExpr, expression.Conjunction, &secondExpr)
-	expr := expression.Construct(&thirdExpr, expression.Implication, &midExpr)
-	fmt.Println(expr.String(), expr)
+	for _, newParser := range newParsers {
+		expr, err := newParser.Parse()
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		axioms = append(axioms, expr)
+	}
+	slv, err := solver.New(axioms, target, 60000)
+	if err != nil {
+		fmt.Println(err)
+	}
+	slv.Solve()
+	fmt.Println(slv.ThoughtChain())
+	defer func(slv solver.Solver) {
+		err := slv.Close()
+		if err != nil {
+			fmt.Println(err)
+		}
+	}(slv)
 }

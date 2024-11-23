@@ -64,7 +64,7 @@ var charToOp = map[rune]expression.Operation{
 
 // Parser парсит выражение в список узлов.
 type Parser struct {
-	brackets   int32
+	brackets   int
 	expression string
 	operands   []expression.Expression
 	operations []Token
@@ -82,14 +82,14 @@ func NewParser(expr string) Parser {
 
 // Parse разбивает выражение на узлы (Nodes).
 func (p *Parser) Parse() (expression.Expression, error) {
-	last_token_is_op := false
+	lastTokenIsOp := false
 	for _, t := range p.expression {
 		if unicode.IsSpace(t) {
 			continue
 		}
 		if t == '(' {
 			p.operations = append(p.operations, OpenBracket)
-			last_token_is_op = false
+			lastTokenIsOp = false
 			continue
 		}
 		if t == ')' {
@@ -97,10 +97,10 @@ func (p *Parser) Parse() (expression.Expression, error) {
 				return expression.Expression{}, fmt.Errorf("Неправильные скобки")
 			}
 			for len(p.operations) != 0 && p.operations[len(p.operations)-1] != OpenBracket {
-				p.constructNode()
+				_ = p.constructNode()
 			}
 			p.operations = p.operations[:len(p.operations)-1]
-			last_token_is_op = false
+			lastTokenIsOp = false
 			continue
 		}
 		if isOperation(t) {
@@ -109,21 +109,21 @@ func (p *Parser) Parse() (expression.Expression, error) {
 				p.operations = append(p.operations, opToToken[op])
 				continue
 			}
-			if last_token_is_op {
+			if lastTokenIsOp {
 				return expression.Expression{}, fmt.Errorf("incorrect input")
 			}
-			last_token_is_op = true
+			lastTokenIsOp = true
 			for len(p.operations) != 0 && priorities[p.operations[len(p.operations)-1]] > priorities[opToToken[op]] {
-				p.constructNode()
+				_ = p.constructNode()
 			}
 			p.operations = append(p.operations, opToToken[op])
 		} else {
-			last_token_is_op = false
+			lastTokenIsOp = false
 			p.operands = append(p.operands, expression.NewExpressionWithTerm(determineOperand(t)))
 		}
 	}
 	for len(p.operations) != 0 {
-		p.constructNode()
+		_ = p.constructNode()
 	}
 	return p.operands[len(p.operands)-1], nil
 }
@@ -144,12 +144,12 @@ func (p *Parser) constructNode() error {
 
 	if len(p.operands) < 2 || len(p.operations) < 1 {
 		if p.operations[len(p.operations)-1] == OpenBracket || p.operations[len(p.operations)-1] == CloseBracket {
-			return fmt.Errorf("Неправильные скобки")
+			return fmt.Errorf("неправильные скобки")
 		}
-		return fmt.Errorf("Что-то пошло не так при формировании узла")
+		return fmt.Errorf("что-то пошло не так при формировании узла")
 	}
 
-	//извлекаем узлы
+	// Извлекаем узлы
 	rhs := p.operands[len(p.operands)-1]
 	p.operands = p.operands[:len(p.operands)-1]
 	op := p.operations[len(p.operations)-1]
@@ -177,7 +177,7 @@ func determineOperation(token rune) expression.Operation {
 
 func determineOperand(token rune) expression.Term {
 	if !('a' <= token && token <= 'z') {
-		fmt.Errorf("Неправильное имя переменной")
+		panic("неправильное имя переменной")
 	}
 	return expression.Term{Type: expression.Variable,
 		Op:  expression.Nop,

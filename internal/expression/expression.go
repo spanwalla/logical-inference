@@ -155,7 +155,7 @@ func (e *Expression) MinValue() Value {
 
 func (e *Expression) Normalize() {
 	var order []Value
-	var remapping map[Value]Value
+	remapping := make(map[Value]Value)
 
 	traverse := func() func(rel Relation) {
 		var f func(rel Relation)
@@ -244,7 +244,7 @@ func (e *Expression) Subtree(idx int) Relation {
 func (e *Expression) CopySubtree(idx int) Expression {
 	newRootIdx := e.Subtree(idx).Self()
 	nodes := make([]Node, 0)
-	var remapping map[int]int
+	remapping := make(map[int]int)
 	i := 0
 
 	traverse := func() func(rel Relation) {
