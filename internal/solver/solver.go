@@ -48,9 +48,11 @@ type Solver struct {
 }
 
 func New(axioms []expression.Expression, target expression.Expression, timeLimit uint64) (*Solver, error) {
-	// TODO: timeLimit доделать
 	if len(axioms) < 3 {
 		return nil, fmt.Errorf("not enough axioms to solve (3 required)")
+	}
+	if timeLimit < 1 {
+		timeLimit = 60000
 	}
 
 	file, err := os.Create("conclusions.txt")
