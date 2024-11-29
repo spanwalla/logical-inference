@@ -8,52 +8,28 @@ import (
 )
 
 func main() {
-	/* term := expression.Term{
-		Type: expression.Variable,
-		Op:   expression.Nop,
-		Val:  expression.Value(1),
-	}
-
-	sterm := expression.Term{
-		Type: expression.Variable,
-		Op:   expression.Nop,
-		Val:  expression.Value(2),
-	}
-
-	e := expression.NewExpressionWithTerm(term)
-	es := expression.NewExpressionWithTerm(sterm)
-
-	ef := expression.Construct(&es, expression.Implication, &e)
-
-	eg := expression.Construct(&e, expression.Implication, &ef)
-	fmt.Println(eg) */
-
-	newParsers := []parser.Parser{
+	axiomParsers := []parser.Parser{
 		parser.NewParser("a>(b>a)"),
 		parser.NewParser("(a>(b>c))>((a>b)>(a>c))"),
 		parser.NewParser("(!a>!b)>((!a>b)>a)"),
 	}
 
-	axioms := make([]expression.Expression, 0, len(newParsers))
-	targetParser := parser.NewParser("a*b>b")
+	axioms := make([]expression.Expression, 0, len(axiomParsers))
+	targetParser := parser.NewParser("a*b>a")
 	target, err := targetParser.Parse()
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	for _, newParser := range newParsers {
-		expr, err := newParser.Parse()
+	for _, axiomParser := range axiomParsers {
+		expr, err := axiomParser.Parse()
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 		axioms = append(axioms, expr)
-		// fmt.Println(expr)
-		// fmt.Println(expr.String())
 	}
-
-	// fmt.Println(target)
 
 	slv, err := solver.New(axioms, target, 60000)
 	if err != nil {
@@ -67,4 +43,8 @@ func main() {
 			fmt.Println(err)
 		}
 	}(slv)
+
+	fmt.Println(target.Variables())
+	target.MakeConst()
+	fmt.Println(target.Operations(expression.Conjunction))
 }

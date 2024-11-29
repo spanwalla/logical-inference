@@ -6,8 +6,8 @@ import (
 )
 
 type Node struct {
-	Term Term
-	Rel  Relation
+	Term     Term
+	Relation Relation
 }
 
 type Expression struct {
@@ -16,40 +16,35 @@ type Expression struct {
 	mod   bool
 }
 
-func NewExpression() Expression {
-	return Expression{
+func NewExpression() *Expression {
+	return &Expression{
 		Nodes: make([]Node, 0),
 		rep:   "",
 		mod:   true,
 	}
 }
 
-func NewExpressionWithTerm(term Term) Expression {
-	return Expression{
-		Nodes: []Node{{Term: term, Rel: NewSelfRelation(0)}},
+func NewExpressionWithTerm(term Term) *Expression {
+	return &Expression{
+		Nodes: []Node{{Term: term, Relation: *NewSelfRelation(0)}},
 		rep:   "",
 		mod:   true,
 	}
 }
 
-func NewExpressionWithStringExpression(expr string) Expression {
-	return Expression{
-		Nodes: []Node{}, // TODO: Заменить на вызов ExpressionAnalyzer, когда он будет готов
+func NewExpressionWithNodes(nodes []Node) *Expression {
+	nodesCopy := make([]Node, len(nodes))
+	copy(nodesCopy, nodes)
+
+	return &Expression{
+		Nodes: nodesCopy,
 		rep:   "",
 		mod:   true,
 	}
 }
 
-func NewExpressionWithNodes(nodes []Node) Expression {
-	return Expression{
-		Nodes: nodes,
-		rep:   "",
-		mod:   true,
-	}
-}
-
-func (e *Expression) inRange(idx int) bool {
-	return idx >= 0 && idx < len(e.Nodes)
+func (e *Expression) inRange(idx uint) bool {
+	return idx < uint(len(e.Nodes))
 }
 
 func (e *Expression) updateRep() {
@@ -106,8 +101,8 @@ func (e *Expression) String() string {
 	return e.rep
 }
 
-func (e *Expression) Operations(op Operation) int {
-	var count = 0
+func (e *Expression) Operations(op Operation) uint {
+	count := uint(0)
 	for _, node := range e.Nodes {
 		if node.Term.Type != Function {
 			continue
@@ -121,7 +116,7 @@ func (e *Expression) Operations(op Operation) int {
 }
 
 func (e *Expression) Variables() []Value {
-	var result = make([]Value, 0, len(e.Nodes))
+	result := make([]Value, 0, len(e.Nodes))
 	for _, node := range e.Nodes {
 		if node.Term.Type == Variable {
 			result = append(result, node.Term.Val)
@@ -131,7 +126,7 @@ func (e *Expression) Variables() []Value {
 }
 
 func (e *Expression) MaxValue() Value {
-	var value = Value(0)
+	value := Value(0)
 	for _, node := range e.Nodes {
 		if node.Term.Type == Variable {
 			value = max(value, node.Term.Val)
@@ -141,36 +136,37 @@ func (e *Expression) MaxValue() Value {
 }
 
 func (e *Expression) MinValue() Value {
-	var value = Value(-1)
-	for i := range len(e.Nodes) {
-		if e.Nodes[i].Term.Type == Variable {
+	value := Value(-1)
+	for _, node := range e.Nodes {
+		if node.Term.Type == Variable {
 			if value == -1 {
-				value = e.Nodes[i].Term.Val
+				value = node.Term.Val
+			} else {
+				value = min(value, node.Term.Val)
 			}
-			value = min(value, e.Nodes[i].Term.Val)
 		}
 	}
 	return value
 }
 
 func (e *Expression) Normalize() {
-	var order []Value
+	order := make([]Value, 0)
 	remapping := make(map[Value]Value)
 
-	traverse := func() func(rel Relation) {
-		var f func(rel Relation)
-		f = func(rel Relation) {
-			if rel.Self() == invalidIdx {
+	traverse := func() func(node Relation) {
+		var f func(node Relation)
+		f = func(node Relation) {
+			if node.Self() == invalidIdx {
 				return
 			}
 
-			f(e.Subtree(rel.Left()))
+			f(e.Subtree(node.Left()))
 
-			if e.Nodes[rel.Self()].Term.Type == Variable {
-				order = append(order, e.Nodes[rel.Self()].Term.Val)
+			if e.Nodes[node.Self()].Term.Type == Variable {
+				order = append(order, e.Nodes[node.Self()].Term.Val)
 			}
 
-			f(e.Subtree(rel.Right()))
+			f(e.Subtree(node.Right()))
 		}
 		return f
 	}()
@@ -178,19 +174,18 @@ func (e *Expression) Normalize() {
 
 	newVal := Value(1)
 	for _, entry := range order {
-		if _, ok := remapping[entry]; ok {
-			continue
+		if _, ok := remapping[entry]; !ok {
+			remapping[entry] = newVal
+			newVal++
 		}
-		remapping[entry] = newVal
-		newVal++
 	}
 
-	for i := range len(e.Nodes) {
+	for i := range e.Nodes {
 		if e.Nodes[i].Term.Type == Variable {
-			continue
+			e.Nodes[i].Term.Val = remapping[e.Nodes[i].Term.Val]
 		}
-		e.Nodes[i].Term.Val = remapping[e.Nodes[i].Term.Val]
 	}
+
 	e.mod = true
 }
 
@@ -201,32 +196,33 @@ func (e *Expression) Standardize() {
 	for queue.Len() > 0 {
 		el := queue.Front()
 		queue.Remove(el)
+		nodeIdx := el.Value.(uint)
 
-		if el.Value.(int) == invalidIdx {
+		if nodeIdx == invalidIdx {
 			continue
 		}
 
-		if e.Nodes[el.Value.(int)].Term.Type != Function {
+		if e.Nodes[nodeIdx].Term.Type != Function {
 			continue
 		}
 
-		if e.Nodes[el.Value.(int)].Term.Op == Disjunction {
-			e.Nodes[el.Value.(int)].Term.Op = Implication
-			e.Negation(e.Subtree(el.Value.(int)).Left())
+		if e.Nodes[nodeIdx].Term.Op == Disjunction {
+			e.Nodes[nodeIdx].Term.Op = Implication
+			e.Negation(e.Subtree(nodeIdx).Left())
 		}
 
-		if e.HasLeft(el.Value.(int)) {
-			queue.PushBack(e.Subtree(el.Value.(int)).Left())
+		if e.HasLeft(nodeIdx) {
+			queue.PushBack(e.Subtree(nodeIdx).Left())
 		}
-		if e.HasRight(el.Value.(int)) {
-			queue.PushBack(e.Subtree(el.Value.(int)).Right())
+		if e.HasRight(nodeIdx) {
+			queue.PushBack(e.Subtree(nodeIdx).Right())
 		}
 	}
 	e.mod = true
 }
 
 func (e *Expression) MakeConst() {
-	for i := range len(e.Nodes) {
+	for i := range e.Nodes {
 		if e.Nodes[i].Term.Type == Variable {
 			e.Nodes[i].Term.Type = Constant
 		}
@@ -234,43 +230,43 @@ func (e *Expression) MakeConst() {
 	e.mod = true
 }
 
-func (e *Expression) Subtree(idx int) Relation {
+func (e *Expression) Subtree(idx uint) Relation {
 	if e.inRange(idx) {
-		return e.Nodes[idx].Rel
+		return e.Nodes[idx].Relation
 	}
-	return NewRelation()
+	return *NewRelation()
 }
 
-func (e *Expression) CopySubtree(idx int) Expression {
+func (e *Expression) CopySubtree(idx uint) *Expression {
 	newRootIdx := e.Subtree(idx).Self()
 	nodes := make([]Node, 0)
-	remapping := make(map[int]int)
-	i := 0
+	remapping := make(map[uint]uint)
+	i := uint(0)
 
-	traverse := func() func(rel Relation) {
-		var f func(rel Relation)
-		f = func(rel Relation) {
-			if rel.Self() == invalidIdx {
+	traverse := func() func(node Relation) {
+		var f func(node Relation)
+		f = func(node Relation) {
+			if node.Self() == invalidIdx {
 				return
 			}
 
-			nodes = append(nodes, e.Nodes[rel.Self()])
-			remapping[rel.Self()] = i
+			nodes = append(nodes, e.Nodes[node.Self()])
+			remapping[node.Self()] = i
 			i++
 
-			f(e.Subtree(rel.Left()))
-			f(e.Subtree(rel.Right()))
+			f(e.Subtree(node.Left()))
+			f(e.Subtree(node.Right()))
 		}
 		return f
 	}()
 
 	traverse(e.Subtree(newRootIdx))
-	nodes[0].Rel.Refs[ParentIdx] = invalidIdx
+	nodes[0].Relation.Refs[ParentIdx] = invalidIdx
 
-	for j := range len(nodes) {
-		for k := range len(nodes[j].Rel.Refs) {
-			if ref, ok := remapping[nodes[j].Rel.Refs[k]]; ok {
-				nodes[j].Rel.Refs[k] = ref
+	for j := range nodes {
+		for k := range nodes[j].Relation.Refs {
+			if ref, ok := remapping[nodes[j].Relation.Refs[k]]; ok {
+				nodes[j].Relation.Refs[k] = ref
 			}
 		}
 	}
@@ -294,21 +290,21 @@ func (e *Expression) Contains(term Term) bool {
 	return false
 }
 
-func (e *Expression) HasLeft(idx int) bool {
+func (e *Expression) HasLeft(idx uint) bool {
 	if !e.inRange(idx) {
 		return false
 	}
-	return e.inRange(e.Nodes[idx].Rel.Left())
+	return e.inRange(e.Nodes[idx].Relation.Left())
 }
 
-func (e *Expression) HasRight(idx int) bool {
+func (e *Expression) HasRight(idx uint) bool {
 	if !e.inRange(idx) {
 		return false
 	}
-	return e.inRange(e.Nodes[idx].Rel.Right())
+	return e.inRange(e.Nodes[idx].Relation.Right())
 }
 
-func (e *Expression) Negation(idx int) {
+func (e *Expression) Negation(idx uint) {
 	if !e.inRange(idx) {
 		return
 	}
@@ -319,27 +315,28 @@ func (e *Expression) Negation(idx int) {
 	for queue.Len() > 0 {
 		el := queue.Front()
 		queue.Remove(el)
+		nodeIdx := el.Value.(uint)
 
-		if el.Value.(int) == invalidIdx {
+		if nodeIdx == invalidIdx {
 			continue
 		}
 
-		if e.Nodes[el.Value.(int)].Term.Type != Function {
-			if e.Nodes[el.Value.(int)].Term.Op == Negation {
-				e.Nodes[el.Value.(int)].Term.Op = Nop
+		if e.Nodes[nodeIdx].Term.Type != Function {
+			if e.Nodes[nodeIdx].Term.Op == Negation {
+				e.Nodes[nodeIdx].Term.Op = Nop
 			} else {
-				e.Nodes[el.Value.(int)].Term.Op = Negation
+				e.Nodes[nodeIdx].Term.Op = Negation
 			}
 			continue
 		}
 
-		e.Nodes[el.Value.(int)].Term.Op = e.Nodes[el.Value.(int)].Term.Op.Opposite()
+		e.Nodes[nodeIdx].Term.Op = e.Nodes[nodeIdx].Term.Op.Opposite()
 
-		if e.Nodes[el.Value.(int)].Term.Op == Implication || e.Nodes[el.Value.(int)].Term.Op == Conjunction {
-			queue.PushBack(e.Subtree(el.Value.(int)).Right())
-		} else if e.Nodes[el.Value.(int)].Term.Op == Disjunction {
-			queue.PushBack(e.Subtree(el.Value.(int)).Left())
-			queue.PushBack(e.Subtree(el.Value.(int)).Right())
+		if e.Nodes[nodeIdx].Term.Op == Implication || e.Nodes[nodeIdx].Term.Op == Conjunction {
+			queue.PushBack(e.Subtree(nodeIdx).Right())
+		} else if e.Nodes[nodeIdx].Term.Op == Disjunction {
+			queue.PushBack(e.Subtree(nodeIdx).Left())
+			queue.PushBack(e.Subtree(nodeIdx).Right())
 		}
 	}
 
@@ -348,7 +345,7 @@ func (e *Expression) Negation(idx int) {
 
 func (e *Expression) ChangeVariables(bound Value) {
 	bound -= e.MinValue()
-	for i := range len(e.Nodes) {
+	for i := range e.Nodes {
 		if e.Nodes[i].Term.Type == Variable {
 			e.Nodes[i].Term.Val += bound
 		}
@@ -356,11 +353,12 @@ func (e *Expression) ChangeVariables(bound Value) {
 	e.mod = true
 }
 
-func (e *Expression) Replace(val Value, expr *Expression) Expression {
+func (e *Expression) Replace(val Value, expr Expression) Expression {
 	if expr.Empty() {
 		return *e
 	}
-	indices := make([]int, 0)
+
+	indices := make([]uint, 0)
 	newExpr := expr
 	newExprNeg := newExpr
 	newExprNeg.Negation(0)
@@ -369,7 +367,7 @@ func (e *Expression) Replace(val Value, expr *Expression) Expression {
 
 	for _, node := range e.Nodes {
 		if node.Term.Type == Variable && node.Term.Val == val {
-			indices = append(indices, node.Rel.Self())
+			indices = append(indices, node.Relation.Self())
 			appropriateVal = max(appropriateVal, -appropriateVal, node.Term.Val)
 		}
 	}
@@ -388,24 +386,27 @@ func (e *Expression) Replace(val Value, expr *Expression) Expression {
 
 		e.Nodes[entry] = Node{
 			Term: replacement.Nodes[0].Term,
-			Rel: NewRelationWithIndices(e.Nodes[entry].Rel.Self(), increaseIdx(replacement.Subtree(0).Left(), offset-1),
-				decreaseIdx(replacement.Subtree(0).Right(), offset-1),
-				e.Nodes[entry].Rel.Parent()),
+			Relation: *NewRelationWithIndices(
+				e.Nodes[entry].Relation.Self(),
+				increaseIdx(replacement.Subtree(0).Left(), uint(offset)-1),
+				decreaseIdx(replacement.Subtree(0).Right(), uint(offset)-1),
+				e.Nodes[entry].Relation.Parent(),
+			),
 		}
 
 		for i := 1; i < replacement.Size(); i++ {
 			e.Nodes = append(e.Nodes, replacement.Nodes[i])
 
-			for j := range len(e.Nodes[len(e.Nodes)-1].Rel.Refs) {
-				e.Nodes[len(e.Nodes)-1].Rel.Refs[j] = increaseIdx(e.Nodes[len(e.Nodes)-1].Rel.Refs[j], offset-1)
+			for j := range e.Nodes[len(e.Nodes)-1].Relation.Refs {
+				e.Nodes[len(e.Nodes)-1].Relation.Refs[j] = increaseIdx(e.Nodes[len(e.Nodes)-1].Relation.Refs[j], uint(offset)-1)
 			}
 		}
 
 		if e.Subtree(entry).Left() != invalidIdx {
-			e.Nodes[e.Subtree(entry).Left()].Rel.Refs[ParentIdx] = entry
+			e.Nodes[e.Subtree(entry).Left()].Relation.Refs[ParentIdx] = entry
 		}
 		if e.Subtree(entry).Right() != invalidIdx {
-			e.Nodes[e.Subtree(entry).Right()].Rel.Refs[ParentIdx] = entry
+			e.Nodes[e.Subtree(entry).Right()].Relation.Refs[ParentIdx] = entry
 		}
 
 		offset = len(e.Nodes)
@@ -415,42 +416,43 @@ func (e *Expression) Replace(val Value, expr *Expression) Expression {
 	return *e
 }
 
-func Construct(lhs *Expression, op Operation, rhs *Expression) Expression {
-	offset := 1
+func Construct(lhs Expression, op Operation, rhs Expression) Expression {
 	expr := NewExpression()
+	offset := uint(1)
+
 	expr.Nodes = append(expr.Nodes, Node{
-		Term: Term{Function, op, Value(0)},
-		Rel:  NewRelationWithIndices(0, 1, lhs.Size()+1, invalidIdx),
+		Term:     Term{Function, op, Value(0)},
+		Relation: *NewRelationWithIndices(0, 1, uint(lhs.Size())+1, invalidIdx),
 	})
 
-	processNodes := func(nodes []Node, offset int) {
+	processNodes := func(nodes []Node, offset uint) {
 		for _, node := range nodes {
 			expr.Nodes = append(expr.Nodes, node)
 
-			for i := range len(expr.Nodes[len(expr.Nodes)-1].Rel.Refs) {
-				expr.Nodes[len(expr.Nodes)-1].Rel.Refs[i] = increaseIdx(expr.Nodes[len(expr.Nodes)-1].Rel.Refs[i], offset)
+			for i := range expr.Nodes[len(expr.Nodes)-1].Relation.Refs {
+				expr.Nodes[len(expr.Nodes)-1].Relation.Refs[i] = increaseIdx(expr.Nodes[len(expr.Nodes)-1].Relation.Refs[i], offset)
 			}
 
-			if expr.Nodes[len(expr.Nodes)-1].Rel.Parent() == invalidIdx {
-				expr.Nodes[len(expr.Nodes)-1].Rel.Refs[ParentIdx] = 0
+			if expr.Nodes[len(expr.Nodes)-1].Relation.Parent() == invalidIdx {
+				expr.Nodes[len(expr.Nodes)-1].Relation.Refs[ParentIdx] = 0
 			}
 		}
 	}
 
 	processNodes(lhs.Nodes, offset)
-	offset += lhs.Size()
+	offset += uint(lhs.Size())
 	processNodes(rhs.Nodes, offset)
 
 	expr.mod = true
-	return expr
+	return *expr
 }
 
-func (e *Expression) Equals(other *Expression, varIgnore bool) bool {
+func (e *Expression) Equals(other Expression, varIgnore bool) bool {
 	if e.Size() != other.Size() {
 		return false
 	}
 
-	for i := 1; i < e.Size(); i++ {
+	for i := 0; i < e.Size(); i++ {
 		if (e.Nodes[i].Term.Type == Function) != (other.Nodes[i].Term.Type == Function) {
 			return false
 		}
@@ -459,7 +461,7 @@ func (e *Expression) Equals(other *Expression, varIgnore bool) bool {
 			return false
 		}
 
-		if !varIgnore && e.Nodes[i].Term.Type != other.Nodes[i].Term.Type {
+		if !varIgnore && (e.Nodes[i].Term.Type != other.Nodes[i].Term.Type) {
 			return false
 		}
 

@@ -21,7 +21,6 @@ func topologicalSortUtil(v expression.Value, adj [][]expression.Value, visited [
 
 // TopologicalSort Основная функция топологической сортировки
 func TopologicalSort(adj [][]expression.Value, size expression.Value) []expression.Value {
-	// stack := []expression.Value{}
 	stack := list.New()
 	visited := make([]bool, size)
 	order := make([]expression.Value, 0, size)
@@ -35,8 +34,8 @@ func TopologicalSort(adj [][]expression.Value, size expression.Value) []expressi
 
 	for stack.Len() > 0 {
 		el := stack.Front()
-		order = append(order, el.Value.(expression.Value))
 		stack.Remove(el)
+		order = append(order, el.Value.(expression.Value))
 	}
 
 	return order
@@ -52,13 +51,13 @@ func AddConstraint(term expression.Term, substitution expression.Expression, sub
 }
 
 func GetUnification(left, right expression.Expression, substitution *map[expression.Value]expression.Expression) bool {
-	var sub map[expression.Value]expression.Expression
+	sub := make(map[expression.Value]expression.Expression)
 
 	right.ChangeVariables(left.MaxValue() + 1)
 	v := right.MaxValue() + 1
 
 	exprQueue := list.New()
-	exprEl := [2]int{left.Subtree(0).Self(), left.Subtree(0).Self()}
+	exprEl := [2]uint{left.Subtree(0).Self(), right.Subtree(0).Self()}
 	exprQueue.PushBack(exprEl)
 
 	var lhs, rhs expression.Expression
@@ -67,7 +66,7 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 		el := exprQueue.Front()
 		exprQueue.Remove(el)
 
-		leftIdx, rightIdx := el.Value.([2]int)[0], el.Value.([2]int)[1]
+		leftIdx, rightIdx := el.Value.([2]uint)[0], el.Value.([2]uint)[1]
 		leftTerm, rightTerm := left.Nodes[leftIdx].Term, right.Nodes[rightIdx].Term
 
 		// case 0
@@ -76,13 +75,13 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 				return false
 			}
 
-			exprQueue.PushBack([2]int{left.Subtree(leftIdx).Right(), right.Subtree(rightIdx).Right()})
-			exprQueue.PushBack([2]int{left.Subtree(leftIdx).Right(), right.Subtree(rightIdx).Right()})
+			exprQueue.PushBack([2]uint{left.Subtree(leftIdx).Left(), right.Subtree(rightIdx).Left()})
+			exprQueue.PushBack([2]uint{left.Subtree(leftIdx).Right(), right.Subtree(rightIdx).Right()})
 			continue
 		}
 
-		lhs = left.CopySubtree(leftIdx)
-		rhs = right.CopySubtree(rightIdx)
+		lhs = *left.CopySubtree(leftIdx)
+		rhs = *right.CopySubtree(rightIdx)
 
 		for lhs.Nodes[0].Term.Type == expression.Variable {
 			shouldNegate := lhs.Nodes[0].Term.Op == expression.Negation
@@ -168,7 +167,7 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 				Val:  v,
 			}
 			v++
-			expr := expression.NewExpressionWithTerm(term)
+			expr := *expression.NewExpressionWithTerm(term)
 			negExpr := expr
 			negExpr.Negation(0)
 
@@ -229,42 +228,44 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 	}
 
 	order := TopologicalSort(adjacent, v-1)
-	for _, variable := range order {
-		variable = variable + 1
+	for i := range order {
+		order[i] = order[i] + 1
 
-		if _, exists := sub[variable]; !exists {
+		if _, exists := sub[order[i]]; !exists {
 			continue
 		}
 
-		expr, _ := sub[variable]
+		expr := sub[order[i]]
 		if expr.Nodes[0].Term.Type != expression.Function {
 			continue
 		}
 
-		for _, v := range expr.Variables() {
-			if _, exist := sub[v]; !exist {
+		for _, value := range expr.Variables() {
+			if _, exist := sub[value]; !exist {
 				continue
 			}
-			replacement, _ := sub[v]
+			replacement := sub[value]
 			for replacement.Nodes[0].Term.Type == expression.Variable {
 				if _, exists := sub[replacement.Nodes[0].Term.Val]; !exists {
 					break
 				}
 				shouldNegate := replacement.Nodes[0].Term.Op == expression.Negation
-				replacement, _ := sub[replacement.Nodes[0].Term.Val]
+				replacement = sub[replacement.Nodes[0].Term.Val]
 				if shouldNegate {
 					replacement.Negation(0)
 				}
 			}
+
 			toCheck := expression.Term{
 				Type: expression.Variable,
 				Op:   expression.Nop,
-				Val:  v}
+				Val:  value,
+			}
 			if replacement.Contains(toCheck) {
 				return false
 			}
 
-			expr.Replace(v, &replacement)
+			expr.Replace(value, replacement)
 		}
 	}
 
@@ -284,5 +285,5 @@ func IsEqual(left, right expression.Expression) bool {
 	left.Normalize()
 	right.Normalize()
 
-	return left.Equals(&right, true)
+	return left.Equals(right, true)
 }
