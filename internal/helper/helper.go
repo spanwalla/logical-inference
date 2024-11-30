@@ -1,41 +1,41 @@
 package helper
 
 import (
-	"container/list"
 	"logical-inference/internal/expression"
+	"logical-inference/internal/pkg/queue"
+	"logical-inference/internal/pkg/stack"
 )
 
-func topologicalSortUtil(v expression.Value, adj [][]expression.Value, visited []bool, stack *list.List) {
+func topologicalSortUtil(v expression.Value, adj [][]expression.Value, visited []bool, s *stack.Stack[expression.Value]) {
 	visited[v] = true
 
 	// Рекурсивный вызов для всех смежных узлов
 	for _, i := range adj[v] {
 		if !visited[i] {
-			topologicalSortUtil(i, adj, visited, stack)
+			topologicalSortUtil(i, adj, visited, s)
 		}
 	}
 
 	// Добавляем вершину в стек
-	stack.PushFront(v)
+	s.Push(v)
 }
 
 // TopologicalSort Основная функция топологической сортировки
 func TopologicalSort(adj [][]expression.Value, size expression.Value) []expression.Value {
-	stack := list.New()
+	s := stack.New[expression.Value]()
 	visited := make([]bool, size)
 	order := make([]expression.Value, 0, size)
 
 	// Проходим по всем узлам графа
 	for i := expression.Value(0); i < size; i++ {
 		if !visited[i] {
-			topologicalSortUtil(i, adj, visited, stack)
+			topologicalSortUtil(i, adj, visited, s)
 		}
 	}
 
-	for stack.Len() > 0 {
-		el := stack.Front()
-		stack.Remove(el)
-		order = append(order, el.Value.(expression.Value))
+	for s.Len() > 0 {
+		el := *s.Pop()
+		order = append(order, el)
 	}
 
 	return order
@@ -56,17 +56,15 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 	right.ChangeVariables(left.MaxValue() + 1)
 	v := right.MaxValue() + 1
 
-	exprQueue := list.New()
-	exprEl := [2]uint{left.Subtree(0).Self(), right.Subtree(0).Self()}
-	exprQueue.PushBack(exprEl)
+	exprQueue := queue.New[[2]uint]()
+	exprQueue.Push([2]uint{left.Subtree(0).Self(), right.Subtree(0).Self()})
 
 	var lhs, rhs expression.Expression
 
 	for exprQueue.Len() > 0 {
-		el := exprQueue.Front()
-		exprQueue.Remove(el)
+		el := *exprQueue.Pop()
 
-		leftIdx, rightIdx := el.Value.([2]uint)[0], el.Value.([2]uint)[1]
+		leftIdx, rightIdx := el[0], el[1]
 		leftTerm, rightTerm := left.Nodes[leftIdx].Term, right.Nodes[rightIdx].Term
 
 		// case 0
@@ -75,31 +73,31 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 				return false
 			}
 
-			exprQueue.PushBack([2]uint{left.Subtree(leftIdx).Left(), right.Subtree(rightIdx).Left()})
-			exprQueue.PushBack([2]uint{left.Subtree(leftIdx).Right(), right.Subtree(rightIdx).Right()})
+			exprQueue.Push([2]uint{left.Subtree(leftIdx).Left(), right.Subtree(rightIdx).Left()})
+			exprQueue.Push([2]uint{left.Subtree(leftIdx).Right(), right.Subtree(rightIdx).Right()})
+
 			continue
 		}
 
 		lhs = *left.CopySubtree(leftIdx)
 		rhs = *right.CopySubtree(rightIdx)
 
-		for lhs.Nodes[0].Term.Type == expression.Variable {
+		contains := func(key expression.Value) bool {
+			_, ok := sub[key]
+			return ok
+		}
+
+		for lhs.Nodes[0].Term.Type == expression.Variable && contains(lhs.Nodes[0].Term.Val) {
 			shouldNegate := lhs.Nodes[0].Term.Op == expression.Negation
-			var ok bool
-			if lhs, ok = sub[lhs.Nodes[0].Term.Val]; !ok {
-				break
-			}
+			lhs = sub[lhs.Nodes[0].Term.Val]
 			if shouldNegate {
 				lhs.Negation(0)
 			}
 		}
 
-		for rhs.Nodes[0].Term.Type == expression.Variable {
+		for rhs.Nodes[0].Term.Type == expression.Variable && contains(rhs.Nodes[0].Term.Val) {
 			shouldNegate := rhs.Nodes[0].Term.Op == expression.Negation
-			var ok bool
-			if rhs, ok = sub[rhs.Nodes[0].Term.Val]; !ok {
-				break
-			}
+			rhs = sub[rhs.Nodes[0].Term.Val]
 			if shouldNegate {
 				rhs.Negation(0)
 			}
@@ -110,7 +108,6 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 			if lhs.Nodes[0].Term != rhs.Nodes[0].Term {
 				return false
 			}
-
 			continue
 		}
 
@@ -152,6 +149,7 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 				if lhs.Nodes[0].Term.Op != rhs.Nodes[0].Term.Op {
 					return false
 				}
+
 				continue
 			}
 
@@ -198,6 +196,7 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 			if !AddConstraint(rhs.Nodes[0].Term, lhs, sub) {
 				return false
 			}
+
 			continue
 		}
 
@@ -214,6 +213,7 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 			if !AddConstraint(lhs.Nodes[0].Term, rhs, sub) {
 				return false
 			}
+
 			continue
 		}
 

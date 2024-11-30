@@ -1,8 +1,9 @@
-package parser
+package logicparser
 
 import (
 	"fmt"
 	"logical-inference/internal/expression"
+	"logical-inference/internal/pkg/stack"
 	"unicode"
 )
 
@@ -20,7 +21,7 @@ const (
 	CloseBracket
 )
 
-var priorities = map[Token]int{
+var priority = map[Token]int{
 	Nop:          0,
 	Negation:     5,
 	Implication:  1,
@@ -53,111 +54,125 @@ var opToToken = map[expression.Operation]Token{
 }
 
 var charToOp = map[rune]expression.Operation{
-	'0': expression.Nop,
-	'!': expression.Negation,
-	'|': expression.Disjunction,
-	'*': expression.Conjunction,
-	'>': expression.Implication,
-	'+': expression.Xor,
-	'=': expression.Equivalent,
+	'\x00': expression.Nop,
+	'!':    expression.Negation,
+	'|':    expression.Disjunction,
+	'*':    expression.Conjunction,
+	'>':    expression.Implication,
+	'+':    expression.Xor,
+	'=':    expression.Equivalent,
 }
 
-// Parser парсит выражение в список узлов.
-type Parser struct {
+// LogicParser парсит выражение в список узлов.
+type LogicParser struct {
 	brackets   int
 	expression string
-	operands   []expression.Expression
-	operations []Token
+	operands   *stack.Stack[expression.Expression]
+	operations *stack.Stack[Token]
 }
 
-// NewParser создает новый парсер для логических выражений.
-func NewParser(expr string) Parser {
-	return Parser{
+// NewLogicParser создает новый анализатор для логических выражений.
+func NewLogicParser(expr string) LogicParser {
+	return LogicParser{
 		brackets:   0,
 		expression: expr,
-		operands:   []expression.Expression{},
-		operations: []Token{},
+		operands:   stack.New[expression.Expression](),
+		operations: stack.New[Token](),
 	}
 }
 
 // Parse разбивает выражение на узлы (Nodes).
-func (p *Parser) Parse() (expression.Expression, error) {
+func (p *LogicParser) Parse() (*expression.Expression, error) {
 	lastTokenIsOp := false
 	for _, t := range p.expression {
 		if unicode.IsSpace(t) {
 			continue
 		}
+
 		if t == '(' {
-			p.operations = append(p.operations, OpenBracket)
+			p.operations.Push(OpenBracket)
 			lastTokenIsOp = false
 			continue
 		}
+
 		if t == ')' {
-			if len(p.operations) == 0 {
-				return expression.Expression{}, fmt.Errorf("Неправильные скобки")
+			if p.operations.Empty() {
+				return expression.NewExpression(), fmt.Errorf("неправильные скобки")
 			}
-			for len(p.operations) != 0 && p.operations[len(p.operations)-1] != OpenBracket {
-				_ = p.constructNode()
+
+			for !p.operations.Empty() && *p.operations.Peek() != OpenBracket {
+				err := p.constructNode()
+				if err != nil {
+					return expression.NewExpression(), err
+				}
 			}
-			p.operations = p.operations[:len(p.operations)-1]
+
+			p.operations.Pop()
 			lastTokenIsOp = false
 			continue
 		}
+
 		if isOperation(t) {
 			op := determineOperation(t)
 			if op == expression.Negation {
-				p.operations = append(p.operations, opToToken[op])
+				p.operations.Push(opToToken[op])
 				continue
 			}
+
 			if lastTokenIsOp {
-				return expression.Expression{}, fmt.Errorf("incorrect input")
+				return expression.NewExpression(), fmt.Errorf("некорректный ввод" +
+					"(несколько операций следуют друг за другом)")
 			}
+
 			lastTokenIsOp = true
-			for len(p.operations) != 0 && priorities[p.operations[len(p.operations)-1]] > priorities[opToToken[op]] {
-				_ = p.constructNode()
+			for !p.operations.Empty() && priority[*p.operations.Peek()] > priority[opToToken[op]] {
+				err := p.constructNode()
+				if err != nil {
+					return expression.NewExpression(), err
+				}
 			}
-			p.operations = append(p.operations, opToToken[op])
+
+			p.operations.Push(opToToken[op])
 		} else {
 			lastTokenIsOp = false
-			p.operands = append(p.operands, expression.NewExpressionWithTerm(determineOperand(t)))
+			p.operands.Push(*expression.NewExpressionWithTerm(determineOperand(t)))
 		}
 	}
-	for len(p.operations) != 0 {
-		_ = p.constructNode()
+
+	for !p.operations.Empty() {
+		err := p.constructNode()
+		if err != nil {
+			return expression.NewExpression(), err
+		}
 	}
-	return p.operands[len(p.operands)-1], nil
+
+	return p.operands.Peek(), nil
 }
 
 // constructNode создает новый узел из текущих операций и операндов.
-func (p *Parser) constructNode() error {
-	if p.operations[len(p.operations)-1] == Negation {
-
-		operand := p.operands[len(p.operands)-1]
-		p.operands = p.operands[:len(p.operands)-1]
-		p.operations = p.operations[:len(p.operations)-1]
+func (p *LogicParser) constructNode() error {
+	if *p.operations.Peek() == Negation {
+		operand := *p.operands.Pop()
+		p.operations.Pop()
 
 		operand.Negation(0)
-		p.operands = append(p.operands, operand)
+		p.operands.Push(operand)
 		return nil
-
 	}
 
-	if len(p.operands) < 2 || len(p.operations) < 1 {
-		if p.operations[len(p.operations)-1] == OpenBracket || p.operations[len(p.operations)-1] == CloseBracket {
+	if p.operands.Len() < 2 || p.operations.Empty() {
+		if *p.operations.Peek() == OpenBracket || *p.operations.Peek() == CloseBracket {
 			return fmt.Errorf("неправильные скобки")
 		}
 		return fmt.Errorf("что-то пошло не так при формировании узла")
 	}
 
 	// Извлекаем узлы
-	rhs := p.operands[len(p.operands)-1]
-	p.operands = p.operands[:len(p.operands)-1]
-	op := p.operations[len(p.operations)-1]
-	p.operations = p.operations[:len(p.operations)-1]
-	lhs := p.operands[len(p.operands)-1]
-	p.operands = p.operands[:len(p.operands)-1]
+	rhs := *p.operands.Pop()
+	op := *p.operations.Pop()
+	lhs := *p.operands.Pop()
 
-	p.operands = append(p.operands, expression.Construct(&lhs, tokenToOperation[op], &rhs))
+	p.operands.Push(expression.Construct(lhs, tokenToOperation[op], rhs))
 	return nil
 }
 
@@ -179,6 +194,7 @@ func determineOperand(token rune) expression.Term {
 	if !('a' <= token && token <= 'z') {
 		panic("неправильное имя переменной")
 	}
+
 	return expression.Term{
 		Type: expression.Variable,
 		Op:   expression.Nop,

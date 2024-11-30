@@ -5,32 +5,33 @@ import (
 	"logical-inference/internal/helper"
 )
 
-func ApplyModusPonens(lhs, rhs expression.Expression) expression.Expression {
+func ApplyModusPonens(lhs, rhs expression.Expression) *expression.Expression {
 	if lhs.Empty() || rhs.Empty() {
-		return *expression.NewExpression()
+		return expression.NewExpression()
 	}
 
 	if rhs.Nodes[0].Term.Op != expression.Implication {
-		return *expression.NewExpression()
+		return expression.NewExpression()
 	}
 
 	// Попытка применить унификацию
 	substitution := make(map[expression.Value]expression.Expression)
 	if !helper.GetUnification(lhs, *rhs.CopySubtree(rhs.Subtree(0).Left()), &substitution) {
-		return *expression.NewExpression()
+		return expression.NewExpression()
 	}
 
 	result := rhs
 	result.ChangeVariables(lhs.MaxValue() + 1)
 	vars := result.Variables()
 
+	contains := func(key expression.Value) bool {
+		_, ok := substitution[key]
+		return ok
+	}
+
 	for _, value := range vars {
 		if change, exists := substitution[value]; exists {
-			for change.Nodes[0].Term.Type == expression.Variable {
-				if _, exists = substitution[change.Nodes[0].Term.Val]; !exists {
-					break
-				}
-
+			for change.Nodes[0].Term.Type == expression.Variable && contains(change.Nodes[0].Term.Val) {
 				shouldNegate := change.Nodes[0].Term.Op == expression.Negation
 				change = substitution[change.Nodes[0].Term.Val]
 				if shouldNegate {
@@ -41,7 +42,7 @@ func ApplyModusPonens(lhs, rhs expression.Expression) expression.Expression {
 		}
 	}
 
-	result = *result.CopySubtree(result.Subtree(0).Right())
-	result.Normalize()
-	return result
+	r := result.CopySubtree(result.Subtree(0).Right())
+	r.Normalize()
+	return r
 }

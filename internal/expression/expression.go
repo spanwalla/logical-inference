@@ -1,7 +1,7 @@
 package expression
 
 import (
-	"container/list"
+	"logical-inference/internal/pkg/queue"
 	"strings"
 )
 
@@ -190,13 +190,11 @@ func (e *Expression) Normalize() {
 }
 
 func (e *Expression) Standardize() {
-	queue := list.New()
-	queue.PushBack(0)
+	q := queue.New[uint]()
+	q.Push(0)
 
-	for queue.Len() > 0 {
-		el := queue.Front()
-		queue.Remove(el)
-		nodeIdx := el.Value.(uint)
+	for q.Len() > 0 {
+		nodeIdx := *q.Pop()
 
 		if nodeIdx == invalidIdx {
 			continue
@@ -212,10 +210,10 @@ func (e *Expression) Standardize() {
 		}
 
 		if e.HasLeft(nodeIdx) {
-			queue.PushBack(e.Subtree(nodeIdx).Left())
+			q.Push(e.Subtree(nodeIdx).Left())
 		}
 		if e.HasRight(nodeIdx) {
-			queue.PushBack(e.Subtree(nodeIdx).Right())
+			q.Push(e.Subtree(nodeIdx).Right())
 		}
 	}
 	e.mod = true
@@ -309,13 +307,11 @@ func (e *Expression) Negation(idx uint) {
 		return
 	}
 
-	queue := list.New()
-	queue.PushBack(idx)
+	q := queue.New[uint]()
+	q.Push(idx)
 
-	for queue.Len() > 0 {
-		el := queue.Front()
-		queue.Remove(el)
-		nodeIdx := el.Value.(uint)
+	for q.Len() > 0 {
+		nodeIdx := *q.Pop()
 
 		if nodeIdx == invalidIdx {
 			continue
@@ -333,10 +329,10 @@ func (e *Expression) Negation(idx uint) {
 		e.Nodes[nodeIdx].Term.Op = e.Nodes[nodeIdx].Term.Op.Opposite()
 
 		if e.Nodes[nodeIdx].Term.Op == Implication || e.Nodes[nodeIdx].Term.Op == Conjunction {
-			queue.PushBack(e.Subtree(nodeIdx).Right())
+			q.Push(e.Subtree(nodeIdx).Right())
 		} else if e.Nodes[nodeIdx].Term.Op == Disjunction {
-			queue.PushBack(e.Subtree(nodeIdx).Left())
-			queue.PushBack(e.Subtree(nodeIdx).Right())
+			q.Push(e.Subtree(nodeIdx).Left())
+			q.Push(e.Subtree(nodeIdx).Right())
 		}
 	}
 
