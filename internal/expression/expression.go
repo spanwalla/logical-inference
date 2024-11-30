@@ -349,14 +349,27 @@ func (e *Expression) ChangeVariables(bound Value) {
 	e.mod = true
 }
 
+func (e *Expression) Copy() Expression {
+	newE := Expression{
+		Nodes: make([]Node, len(e.Nodes)),
+		mod:   true,
+		rep:   e.rep,
+	}
+
+	if e.Nodes != nil {
+		copy(newE.Nodes, e.Nodes)
+	}
+	return newE
+}
+
 func (e *Expression) Replace(val Value, expr Expression) Expression {
 	if expr.Empty() {
 		return *e
 	}
 
 	indices := make([]uint, 0)
-	newExpr := expr
-	newExprNeg := newExpr
+	newExpr := expr.Copy()
+	newExprNeg := newExpr.Copy()
 	newExprNeg.Negation(0)
 
 	appropriateVal := Value(0)
@@ -385,7 +398,7 @@ func (e *Expression) Replace(val Value, expr Expression) Expression {
 			Relation: *NewRelationWithIndices(
 				e.Nodes[entry].Relation.Self(),
 				increaseIdx(replacement.Subtree(0).Left(), uint(offset)-1),
-				decreaseIdx(replacement.Subtree(0).Right(), uint(offset)-1),
+				increaseIdx(replacement.Subtree(0).Right(), uint(offset)-1),
 				e.Nodes[entry].Relation.Parent(),
 			),
 		}

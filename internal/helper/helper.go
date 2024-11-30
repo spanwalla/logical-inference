@@ -52,6 +52,10 @@ func AddConstraint(term expression.Term, substitution expression.Expression, sub
 
 func GetUnification(left, right expression.Expression, substitution *map[expression.Value]expression.Expression) bool {
 	sub := make(map[expression.Value]expression.Expression)
+	contains := func(key expression.Value) bool {
+		_, ok := sub[key]
+		return ok
+	}
 
 	right.ChangeVariables(left.MaxValue() + 1)
 	v := right.MaxValue() + 1
@@ -81,11 +85,6 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 
 		lhs = *left.CopySubtree(leftIdx)
 		rhs = *right.CopySubtree(rightIdx)
-
-		contains := func(key expression.Value) bool {
-			_, ok := sub[key]
-			return ok
-		}
 
 		for lhs.Nodes[0].Term.Type == expression.Variable && contains(lhs.Nodes[0].Term.Val) {
 			shouldNegate := lhs.Nodes[0].Term.Op == expression.Negation
@@ -166,7 +165,7 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 			}
 			v++
 			expr := *expression.NewExpressionWithTerm(term)
-			negExpr := expr
+			negExpr := expr.Copy()
 			negExpr.Negation(0)
 
 			if lhs.Nodes[0].Term.Op == expression.Negation {
@@ -245,10 +244,7 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 				continue
 			}
 			replacement := sub[value]
-			for replacement.Nodes[0].Term.Type == expression.Variable {
-				if _, exists := sub[replacement.Nodes[0].Term.Val]; !exists {
-					break
-				}
+			for replacement.Nodes[0].Term.Type == expression.Variable && contains(replacement.Nodes[0].Term.Val) {
 				shouldNegate := replacement.Nodes[0].Term.Op == expression.Negation
 				replacement = sub[replacement.Nodes[0].Term.Val]
 				if shouldNegate {

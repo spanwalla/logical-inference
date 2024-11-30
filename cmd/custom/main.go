@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"logical-inference/internal/expression"
 	"logical-inference/internal/logicparser"
-	"logical-inference/internal/rules"
 	"logical-inference/internal/solver"
 )
 
@@ -16,9 +15,8 @@ func main() {
 	}
 
 	target := *logicparser.NewExpressionWithString("a*b>a")
-
-	e := rules.ApplyModusPonens(axioms[0], axioms[0])
-	e.Normalize()
+	target.Standardize()
+	target.MakeConst()
 
 	slv, err := solver.New(axioms, target, 60000)
 	defer func(slv *solver.Solver) {

@@ -20,14 +20,14 @@ func ApplyModusPonens(lhs, rhs expression.Expression) *expression.Expression {
 		return expression.NewExpression()
 	}
 
-	result := rhs
-	result.ChangeVariables(lhs.MaxValue() + 1)
-	vars := result.Variables()
-
 	contains := func(key expression.Value) bool {
 		_, ok := substitution[key]
 		return ok
 	}
+
+	result := rhs
+	result.ChangeVariables(lhs.MaxValue() + 1)
+	vars := result.Variables()
 
 	for _, value := range vars {
 		if change, exists := substitution[value]; exists {
