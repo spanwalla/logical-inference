@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"github.com/tiendc/go-deepcopy"
 	"logical-inference/internal/expression"
 	"logical-inference/internal/pkg/queue"
 	"logical-inference/internal/pkg/stack"
@@ -46,7 +47,9 @@ func AddConstraint(term expression.Term, substitution expression.Expression, sub
 		return false
 	}
 
-	sub[term.Val] = substitution
+	var substCopy expression.Expression
+	_ = deepcopy.Copy(&substCopy, &substitution)
+	sub[term.Val] = substCopy
 	return true
 }
 
@@ -57,11 +60,15 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 		return ok
 	}
 
-	right.ChangeVariables(left.MaxValue() + 1)
-	v := right.MaxValue() + 1
+	var leftCopy, rightCopy expression.Expression
+	_ = deepcopy.Copy(&leftCopy, &left)
+	_ = deepcopy.Copy(&rightCopy, &right)
+
+	rightCopy.ChangeVariables(leftCopy.MaxValue() + 1)
+	v := rightCopy.MaxValue() + 1
 
 	exprQueue := queue.New[[2]uint]()
-	exprQueue.Push([2]uint{left.Subtree(0).Self(), right.Subtree(0).Self()})
+	exprQueue.Push([2]uint{leftCopy.Subtree(0).Self(), rightCopy.Subtree(0).Self()})
 
 	var lhs, rhs expression.Expression
 
@@ -69,7 +76,7 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 		el := *exprQueue.Pop()
 
 		leftIdx, rightIdx := el[0], el[1]
-		leftTerm, rightTerm := left.Nodes[leftIdx].Term, right.Nodes[rightIdx].Term
+		leftTerm, rightTerm := leftCopy.Nodes[leftIdx].Term, rightCopy.Nodes[rightIdx].Term
 
 		// case 0
 		if leftTerm.Type == expression.Function && rightTerm.Type == expression.Function {
@@ -77,18 +84,20 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 				return false
 			}
 
-			exprQueue.Push([2]uint{left.Subtree(leftIdx).Left(), right.Subtree(rightIdx).Left()})
-			exprQueue.Push([2]uint{left.Subtree(leftIdx).Right(), right.Subtree(rightIdx).Right()})
+			exprQueue.Push([2]uint{leftCopy.Subtree(leftIdx).Left(), rightCopy.Subtree(rightIdx).Left()})
+			exprQueue.Push([2]uint{leftCopy.Subtree(leftIdx).Right(), rightCopy.Subtree(rightIdx).Right()})
 
 			continue
 		}
 
-		lhs = *left.CopySubtree(leftIdx)
-		rhs = *right.CopySubtree(rightIdx)
+		lhs = *leftCopy.CopySubtree(leftIdx)
+		rhs = *rightCopy.CopySubtree(rightIdx)
 
 		for lhs.Nodes[0].Term.Type == expression.Variable && contains(lhs.Nodes[0].Term.Val) {
 			shouldNegate := lhs.Nodes[0].Term.Op == expression.Negation
-			lhs = sub[lhs.Nodes[0].Term.Val]
+			// lhs = sub[lhs.Nodes[0].Term.Val]
+			tmp := sub[lhs.Nodes[0].Term.Val]
+			_ = deepcopy.Copy(&lhs, &tmp)
 			if shouldNegate {
 				lhs.Negation(0)
 			}
@@ -96,7 +105,9 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 
 		for rhs.Nodes[0].Term.Type == expression.Variable && contains(rhs.Nodes[0].Term.Val) {
 			shouldNegate := rhs.Nodes[0].Term.Op == expression.Negation
-			rhs = sub[rhs.Nodes[0].Term.Val]
+			// rhs = sub[rhs.Nodes[0].Term.Val]
+			tmp := sub[rhs.Nodes[0].Term.Val]
+			_ = deepcopy.Copy(&rhs, &tmp)
 			if shouldNegate {
 				rhs.Negation(0)
 			}
@@ -158,14 +169,14 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 				op = expression.Negation
 			}
 
-			term := expression.Term{
+			expr := *expression.NewExpressionWithTerm(expression.Term{
 				Type: expression.Variable,
 				Op:   op,
 				Val:  v,
-			}
+			})
 			v++
-			expr := *expression.NewExpressionWithTerm(term)
-			negExpr := expr.Copy()
+			var negExpr expression.Expression
+			_ = deepcopy.Copy(&negExpr, &expr)
 			negExpr.Negation(0)
 
 			if lhs.Nodes[0].Term.Op == expression.Negation {
@@ -243,7 +254,11 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 			if _, exist := sub[value]; !exist {
 				continue
 			}
-			replacement := sub[value]
+
+			var replacement expression.Expression
+			tmp := sub[value]
+			_ = deepcopy.Copy(&replacement, &tmp)
+
 			for replacement.Nodes[0].Term.Type == expression.Variable && contains(replacement.Nodes[0].Term.Val) {
 				shouldNegate := replacement.Nodes[0].Term.Op == expression.Negation
 				replacement = sub[replacement.Nodes[0].Term.Val]
@@ -278,8 +293,11 @@ func IsEqual(left, right expression.Expression) bool {
 		return false
 	}
 
-	left.Normalize()
-	right.Normalize()
+	var leftCopy, rightCopy expression.Expression
+	_ = deepcopy.Copy(&leftCopy, &left)
+	_ = deepcopy.Copy(&rightCopy, &right)
+	leftCopy.Normalize()
+	rightCopy.Normalize()
 
-	return left.Equals(right, true)
+	return leftCopy.Equals(rightCopy, true)
 }

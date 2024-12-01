@@ -7,40 +7,28 @@ const (
 	ParentIdx
 )
 
-type Relation struct {
-	Refs [4]uint // Индексы самого себя, левого, правого, родителя
-}
+type Relation [4]uint // Индексы самого себя, левого, правого, родителя
 
 func (r Relation) Self() uint {
-	return r.Refs[SelfIdx]
+	return r[SelfIdx]
 }
 
 func (r Relation) Left() uint {
-	return r.Refs[LeftIdx]
+	return r[LeftIdx]
 }
 
 func (r Relation) Right() uint {
-	return r.Refs[RightIdx]
+	return r[RightIdx]
 }
 
 func (r Relation) Parent() uint {
-	return r.Refs[ParentIdx]
+	return r[ParentIdx]
 }
 
 func NewRelation() *Relation {
-	return &Relation{
-		Refs: [4]uint{invalidIdx, invalidIdx, invalidIdx, invalidIdx},
-	}
+	return &Relation{invalidIdx, invalidIdx, invalidIdx, invalidIdx}
 }
 
 func NewSelfRelation(idx uint) *Relation {
-	return &Relation{
-		Refs: [4]uint{idx, invalidIdx, invalidIdx, invalidIdx},
-	}
-}
-
-func NewRelationWithIndices(self, left, right, parent uint) *Relation {
-	return &Relation{
-		Refs: [4]uint{self, left, right, parent},
-	}
+	return &Relation{idx, invalidIdx, invalidIdx, invalidIdx}
 }

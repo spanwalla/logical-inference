@@ -1,6 +1,7 @@
 package expression
 
 import (
+	"github.com/tiendc/go-deepcopy"
 	"logical-inference/internal/pkg/queue"
 	"strings"
 )
@@ -33,11 +34,14 @@ func NewExpressionWithTerm(term Term) *Expression {
 }
 
 func NewExpressionWithNodes(nodes []Node) *Expression {
-	nodesCopy := make([]Node, len(nodes))
-	copy(nodesCopy, nodes)
+	var newNodes []Node
+	err := deepcopy.Copy(&newNodes, &nodes)
+	if err != nil {
+		return NewExpression()
+	}
 
 	return &Expression{
-		Nodes: nodesCopy,
+		Nodes: newNodes,
 		rep:   "",
 		mod:   true,
 	}
@@ -259,12 +263,12 @@ func (e *Expression) CopySubtree(idx uint) *Expression {
 	}()
 
 	traverse(e.Subtree(newRootIdx))
-	nodes[0].Relation.Refs[ParentIdx] = invalidIdx
+	nodes[0].Relation[ParentIdx] = invalidIdx
 
 	for j := range nodes {
-		for k := range nodes[j].Relation.Refs {
-			if ref, ok := remapping[nodes[j].Relation.Refs[k]]; ok {
-				nodes[j].Relation.Refs[k] = ref
+		for k := range nodes[j].Relation {
+			if ref, ok := remapping[nodes[j].Relation[k]]; ok {
+				nodes[j].Relation[k] = ref
 			}
 		}
 	}
@@ -349,27 +353,16 @@ func (e *Expression) ChangeVariables(bound Value) {
 	e.mod = true
 }
 
-func (e *Expression) Copy() Expression {
-	newE := Expression{
-		Nodes: make([]Node, len(e.Nodes)),
-		mod:   true,
-		rep:   e.rep,
-	}
-
-	if e.Nodes != nil {
-		copy(newE.Nodes, e.Nodes)
-	}
-	return newE
-}
-
 func (e *Expression) Replace(val Value, expr Expression) Expression {
 	if expr.Empty() {
 		return *e
 	}
 
 	indices := make([]uint, 0)
-	newExpr := expr.Copy()
-	newExprNeg := newExpr.Copy()
+
+	var newExpr, newExprNeg Expression
+	_ = deepcopy.Copy(&newExpr, &expr)
+	_ = deepcopy.Copy(&newExprNeg, &expr)
 	newExprNeg.Negation(0)
 
 	appropriateVal := Value(0)
@@ -388,34 +381,36 @@ func (e *Expression) Replace(val Value, expr Expression) Expression {
 	offset := e.Size()
 	appropriateVal += 1
 	for _, entry := range indices {
-		replacement := newExpr
+		var replacement Expression
 		if e.Nodes[entry].Term.Op == Negation {
-			replacement = newExprNeg
+			_ = deepcopy.Copy(&replacement, &newExprNeg)
+		} else {
+			_ = deepcopy.Copy(&replacement, &newExpr)
 		}
 
 		e.Nodes[entry] = Node{
 			Term: replacement.Nodes[0].Term,
-			Relation: *NewRelationWithIndices(
+			Relation: Relation{
 				e.Nodes[entry].Relation.Self(),
 				increaseIdx(replacement.Subtree(0).Left(), uint(offset)-1),
 				increaseIdx(replacement.Subtree(0).Right(), uint(offset)-1),
 				e.Nodes[entry].Relation.Parent(),
-			),
+			},
 		}
 
 		for i := 1; i < replacement.Size(); i++ {
 			e.Nodes = append(e.Nodes, replacement.Nodes[i])
 
-			for j := range e.Nodes[len(e.Nodes)-1].Relation.Refs {
-				e.Nodes[len(e.Nodes)-1].Relation.Refs[j] = increaseIdx(e.Nodes[len(e.Nodes)-1].Relation.Refs[j], uint(offset)-1)
+			for j := range e.Nodes[len(e.Nodes)-1].Relation {
+				e.Nodes[len(e.Nodes)-1].Relation[j] = increaseIdx(e.Nodes[len(e.Nodes)-1].Relation[j], uint(offset)-1)
 			}
 		}
 
 		if e.Subtree(entry).Left() != invalidIdx {
-			e.Nodes[e.Subtree(entry).Left()].Relation.Refs[ParentIdx] = entry
+			e.Nodes[e.Subtree(entry).Left()].Relation[ParentIdx] = entry
 		}
 		if e.Subtree(entry).Right() != invalidIdx {
-			e.Nodes[e.Subtree(entry).Right()].Relation.Refs[ParentIdx] = entry
+			e.Nodes[e.Subtree(entry).Right()].Relation[ParentIdx] = entry
 		}
 
 		offset = len(e.Nodes)
@@ -431,19 +426,19 @@ func Construct(lhs Expression, op Operation, rhs Expression) Expression {
 
 	expr.Nodes = append(expr.Nodes, Node{
 		Term:     Term{Function, op, Value(0)},
-		Relation: *NewRelationWithIndices(0, 1, uint(lhs.Size())+1, invalidIdx),
+		Relation: Relation{0, 1, uint(lhs.Size()) + 1, invalidIdx},
 	})
 
 	processNodes := func(nodes []Node, offset uint) {
 		for _, node := range nodes {
 			expr.Nodes = append(expr.Nodes, node)
 
-			for i := range expr.Nodes[len(expr.Nodes)-1].Relation.Refs {
-				expr.Nodes[len(expr.Nodes)-1].Relation.Refs[i] = increaseIdx(expr.Nodes[len(expr.Nodes)-1].Relation.Refs[i], offset)
+			for i := range expr.Nodes[len(expr.Nodes)-1].Relation {
+				expr.Nodes[len(expr.Nodes)-1].Relation[i] = increaseIdx(expr.Nodes[len(expr.Nodes)-1].Relation[i], offset)
 			}
 
 			if expr.Nodes[len(expr.Nodes)-1].Relation.Parent() == invalidIdx {
-				expr.Nodes[len(expr.Nodes)-1].Relation.Refs[ParentIdx] = 0
+				expr.Nodes[len(expr.Nodes)-1].Relation[ParentIdx] = 0
 			}
 		}
 	}

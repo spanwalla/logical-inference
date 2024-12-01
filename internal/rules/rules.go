@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"github.com/tiendc/go-deepcopy"
 	"logical-inference/internal/expression"
 	"logical-inference/internal/helper"
 )
@@ -25,15 +26,19 @@ func ApplyModusPonens(lhs, rhs expression.Expression) *expression.Expression {
 		return ok
 	}
 
-	result := rhs
+	var result expression.Expression
+	_ = deepcopy.Copy(&result, &rhs)
 	result.ChangeVariables(lhs.MaxValue() + 1)
 	vars := result.Variables()
 
 	for _, value := range vars {
-		if change, exists := substitution[value]; exists {
+		if tmp, exists := substitution[value]; exists {
+			var change expression.Expression
+			_ = deepcopy.Copy(&change, &tmp)
 			for change.Nodes[0].Term.Type == expression.Variable && contains(change.Nodes[0].Term.Val) {
 				shouldNegate := change.Nodes[0].Term.Op == expression.Negation
-				change = substitution[change.Nodes[0].Term.Val]
+				tmp = substitution[change.Nodes[0].Term.Val]
+				_ = deepcopy.Copy(&change, &tmp)
 				if shouldNegate {
 					change.Negation(0)
 				}

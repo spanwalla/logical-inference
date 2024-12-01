@@ -3,6 +3,7 @@ package solver
 import (
 	"fmt"
 	"github.com/scylladb/go-set/strset"
+	"github.com/tiendc/go-deepcopy"
 	"logical-inference/internal/expression"
 	"logical-inference/internal/helper"
 	"logical-inference/internal/logicparser"
@@ -61,11 +62,14 @@ func New(axioms []expression.Expression, target expression.Expression, timeLimit
 		return &Solver{}, fmt.Errorf("failed to create file: %w", err)
 	}
 
+	var targetCopy expression.Expression
+	_ = deepcopy.Copy(&targetCopy, &target)
+
 	return &Solver{
 		knownAxioms: *strset.New(),
 		axioms:      axioms,
 		produced:    []expression.Expression{},
-		targets:     []expression.Expression{target},
+		targets:     []expression.Expression{targetCopy},
 		timeLimit:   timeLimit,
 		builder:     strings.Builder{},
 		outputFile:  file,
@@ -172,7 +176,9 @@ func (s *Solver) produce(maxLen int) {
 
 		// Нормализовать и добавить выражение к аксиомам
 		expr.Normalize()
-		s.axioms = append(s.axioms, expr)
+		var tmp expression.Expression
+		_ = deepcopy.Copy(&tmp, &expr)
+		s.axioms = append(s.axioms, tmp)
 
 		// Проверить, доказано ли целевое выражение
 		if s.isTargetProvedBy(s.axioms[len(s.axioms)-1]) {
@@ -306,8 +312,8 @@ func (s *Solver) Solve() {
 
 		for _, target := range s.targets {
 			if helper.IsEqual(target, axiom) {
-				proof = axiom
-				targetProved = target
+				_ = deepcopy.Copy(&proof, &axiom)
+				_ = deepcopy.Copy(&targetProved, &target)
 				break
 			}
 		}
