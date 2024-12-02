@@ -15,7 +15,6 @@ func ApplyModusPonens(lhs, rhs expression.Expression) *expression.Expression {
 		return expression.NewExpression()
 	}
 
-	// Попытка применить унификацию
 	substitution := make(map[expression.Value]expression.Expression)
 	if !helper.GetUnification(lhs, *rhs.CopySubtree(rhs.Subtree(0).Left()), &substitution) {
 		return expression.NewExpression()

@@ -36,5 +36,5 @@ func main() {
 		return
 	}
 	slv.Solve()
-	fmt.Println(slv.ThoughtChain())
+	// fmt.Println(slv.ThoughtChain())
 }

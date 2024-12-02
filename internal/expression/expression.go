@@ -252,7 +252,11 @@ func (e *Expression) CopySubtree(idx uint) *Expression {
 				return
 			}
 
-			nodes = append(nodes, e.Nodes[node.Self()])
+			var tmp Node
+			selfNode := e.Nodes[node.Self()]
+			_ = deepcopy.Copy(&tmp, &selfNode)
+
+			nodes = append(nodes, tmp)
 			remapping[node.Self()] = i
 			i++
 

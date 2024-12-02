@@ -162,22 +162,24 @@ func (s *Solver) produce(maxLen int) {
 	}
 
 	newlyProduced := make([]expression.Expression, 0, len(s.produced)*2)
+	var expr expression.Expression
 
-	for _, expr := range s.produced {
+	for i := range s.produced {
 		// Проверка времени
 		if msSinceEpoch() > s.timeLimit {
 			break
 		}
 
 		// Пропустить слишком длинные выражения
-		if expr.Size() > maxLen {
+		if s.produced[i].Size() > maxLen {
 			continue
 		}
 
 		// Нормализовать и добавить выражение к аксиомам
-		expr.Normalize()
+		s.produced[i].Normalize()
 		var tmp expression.Expression
-		_ = deepcopy.Copy(&tmp, &expr)
+		e := s.produced[i]
+		_ = deepcopy.Copy(&tmp, &e)
 		s.axioms = append(s.axioms, tmp)
 
 		// Проверить, доказано ли целевое выражение
@@ -187,23 +189,25 @@ func (s *Solver) produce(maxLen int) {
 
 		// Создать новые выражения через modus-ponens
 		for j := range s.axioms {
-			newExpr := *rules.ApplyModusPonens(s.axioms[j], s.axioms[len(s.axioms)-1])
+			expr = *rules.ApplyModusPonens(s.axioms[j], s.axioms[len(s.axioms)-1])
 
-			if !s.isGoodExpression(newExpr, maxLen) || s.knownAxioms.Has(newExpr.String()) {
+			if !s.isGoodExpression(expr, maxLen) || s.knownAxioms.Has(expr.String()) {
 				continue
 			}
 
-			newlyProduced = append(newlyProduced, newExpr)
-			s.knownAxioms.Add(newExpr.String())
+			_ = deepcopy.Copy(&tmp, &expr)
+			newlyProduced = append(newlyProduced, tmp)
+			s.knownAxioms.Add(expr.String())
 
-			_, err := fmt.Fprintf(s.outputFile, "%s mp %s %s\n", newExpr.String(), s.axioms[j].String(), s.axioms[len(s.axioms)-1].String())
+			_, err := fmt.Fprintf(s.outputFile, "%s mp %s %s\n", expr.String(), s.axioms[j].String(), s.axioms[len(s.axioms)-1].String())
 			if err != nil {
 				fmt.Println(err)
 				return
 			}
 
-			if s.isTargetProvedBy(newExpr) {
-				s.axioms = append(s.axioms, newlyProduced[len(newlyProduced)-1])
+			if s.isTargetProvedBy(expr) {
+				_ = deepcopy.Copy(&tmp, &expr)
+				s.axioms = append(s.axioms, tmp)
 				return
 			}
 
@@ -212,23 +216,25 @@ func (s *Solver) produce(maxLen int) {
 			}
 
 			// Инверсный порядок modus ponens
-			newExpr = *rules.ApplyModusPonens(s.axioms[len(s.axioms)-1], s.axioms[j])
+			expr = *rules.ApplyModusPonens(s.axioms[len(s.axioms)-1], s.axioms[j])
 
-			if !s.isGoodExpression(newExpr, maxLen) || s.knownAxioms.Has(newExpr.String()) {
+			if !s.isGoodExpression(expr, maxLen) || s.knownAxioms.Has(expr.String()) {
 				continue
 			}
 
-			newlyProduced = append(newlyProduced, newExpr)
-			s.knownAxioms.Add(newExpr.String())
+			_ = deepcopy.Copy(&tmp, &expr)
+			newlyProduced = append(newlyProduced, tmp)
+			s.knownAxioms.Add(expr.String())
 
-			_, err = fmt.Fprintf(s.outputFile, "%s mp %s %s\n", newExpr.String(), s.axioms[len(s.axioms)-1].String(), s.axioms[j].String())
+			_, err = fmt.Fprintf(s.outputFile, "%s mp %s %s\n", expr.String(), s.axioms[len(s.axioms)-1].String(), s.axioms[j].String())
 			if err != nil {
 				fmt.Println(err)
 				return
 			}
 
-			if s.isTargetProvedBy(newlyProduced[len(newlyProduced)-1]) {
-				s.axioms = append(s.axioms, newlyProduced[len(newlyProduced)-1])
+			if s.isTargetProvedBy(expr) {
+				_ = deepcopy.Copy(&tmp, &expr)
+				s.axioms = append(s.axioms, tmp)
 				return
 			}
 		}
@@ -259,9 +265,11 @@ func (s *Solver) Solve() {
 		s.builder.WriteString(fmt.Sprintf("deduction theorem: Γ ⊢ %s <=> Γ U {%s} ⊢ %s\n", prev.String(), axiom.String(), curr.String()))
 	}
 
-	for i := 0; i < len(s.axioms); i++ {
+	for i := range s.axioms {
 		s.axioms[i].Normalize()
-		s.produced = append(s.produced, s.axioms[i])
+		var tmp expression.Expression
+		_ = deepcopy.Copy(&tmp, s.axioms[i])
+		s.produced = append(s.produced, tmp)
 
 		_, err := fmt.Fprintf(s.outputFile, "%s axiom\n", s.axioms[i].String())
 		if err != nil {

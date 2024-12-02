@@ -124,25 +124,26 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 		// case 2
 		if lhs.Nodes[0].Term.Type == expression.Constant && rhs.Nodes[0].Term.Type == expression.Variable {
 			if rhs.Nodes[0].Term.Op == expression.Negation {
-				lhs.Nodes[0].Term.Op = expression.Nop
 				if lhs.Nodes[0].Term.Op != expression.Negation {
 					lhs.Nodes[0].Term.Op = expression.Negation
+				} else {
+					lhs.Nodes[0].Term.Op = expression.Nop
 				}
 			}
 
 			if !AddConstraint(rhs.Nodes[0].Term, lhs, sub) {
 				return false
 			}
-
 			continue
 		}
 
 		// case 3
 		if lhs.Nodes[0].Term.Type == expression.Variable && rhs.Nodes[0].Term.Type == expression.Constant {
 			if lhs.Nodes[0].Term.Op == expression.Negation {
-				rhs.Nodes[0].Term.Op = expression.Nop
 				if rhs.Nodes[0].Term.Op != expression.Negation {
 					rhs.Nodes[0].Term.Op = expression.Negation
+				} else {
+					rhs.Nodes[0].Term.Op = expression.Nop
 				}
 			}
 
@@ -245,23 +246,29 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 			continue
 		}
 
-		expr := sub[order[i]]
+		// var expr expression.Expression
+		// tmp := sub[order[i]]
+		// _ = deepcopy.Copy(&expr, &tmp)
+		tmp := sub[order[i]]
+		expr := &tmp
 		if expr.Nodes[0].Term.Type != expression.Function {
 			continue
 		}
 
 		for _, value := range expr.Variables() {
-			if _, exist := sub[value]; !exist {
+			if _, exists := sub[value]; !exists {
 				continue
 			}
 
 			var replacement expression.Expression
-			tmp := sub[value]
+			tmp = sub[value]
 			_ = deepcopy.Copy(&replacement, &tmp)
+			// replacement := sub[value]
 
 			for replacement.Nodes[0].Term.Type == expression.Variable && contains(replacement.Nodes[0].Term.Val) {
 				shouldNegate := replacement.Nodes[0].Term.Op == expression.Negation
-				replacement = sub[replacement.Nodes[0].Term.Val]
+				tmp = sub[replacement.Nodes[0].Term.Val]
+				_ = deepcopy.Copy(&replacement, &tmp)
 				if shouldNegate {
 					replacement.Negation(0)
 				}
