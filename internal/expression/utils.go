@@ -8,10 +8,3 @@ func increaseIdx(idx, offset uint) uint {
 	}
 	return idx + offset
 }
-
-func decreaseIdx(idx, offset uint) uint {
-	if idx == invalidIdx || offset > idx {
-		return invalidIdx
-	}
-	return idx - offset
-}

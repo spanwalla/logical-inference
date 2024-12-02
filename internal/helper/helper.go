@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"fmt"
 	"github.com/tiendc/go-deepcopy"
 	"logical-inference/internal/expression"
 	"logical-inference/internal/pkg/queue"
@@ -25,7 +26,6 @@ func topologicalSortUtil(v expression.Value, adj [][]expression.Value, visited [
 func TopologicalSort(adj [][]expression.Value, size expression.Value) []expression.Value {
 	s := stack.New[expression.Value]()
 	visited := make([]bool, size)
-	order := make([]expression.Value, 0, size)
 
 	// Проходим по всем узлам графа
 	for i := expression.Value(0); i < size; i++ {
@@ -34,6 +34,7 @@ func TopologicalSort(adj [][]expression.Value, size expression.Value) []expressi
 		}
 	}
 
+	order := make([]expression.Value, 0, size)
 	for s.Len() > 0 {
 		el := *s.Pop()
 		order = append(order, el)
@@ -48,14 +49,34 @@ func AddConstraint(term expression.Term, substitution expression.Expression, sub
 	}
 
 	var substCopy expression.Expression
-	_ = deepcopy.Copy(&substCopy, &substitution)
+	if err := deepcopy.Copy(&substCopy, &substitution); err != nil {
+		fmt.Println("Error deepcopying substitution:", err)
+	}
 	sub[term.Val] = substCopy
 	return true
 }
 
+func IsEqual(left, right expression.Expression) bool {
+	if left.Size() != right.Size() {
+		return false
+	}
+
+	if left.Nodes[0].Term.Op != right.Nodes[0].Term.Op {
+		return false
+	}
+
+	var leftCopy, rightCopy expression.Expression
+	_ = deepcopy.Copy(&leftCopy, &left)
+	_ = deepcopy.Copy(&rightCopy, &right)
+	leftCopy.Normalize()
+	rightCopy.Normalize()
+
+	return leftCopy.Equals(rightCopy, true)
+}
+
 func GetUnification(left, right expression.Expression, substitution *map[expression.Value]expression.Expression) bool {
 	sub := make(map[expression.Value]expression.Expression)
-	contains := func(key expression.Value) bool {
+	subContains := func(key expression.Value) bool {
 		_, ok := sub[key]
 		return ok
 	}
@@ -63,49 +84,43 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 	var leftCopy, rightCopy expression.Expression
 	_ = deepcopy.Copy(&leftCopy, &left)
 	_ = deepcopy.Copy(&rightCopy, &right)
-
 	rightCopy.ChangeVariables(leftCopy.MaxValue() + 1)
 	v := rightCopy.MaxValue() + 1
 
-	exprQueue := queue.New[[2]uint]()
-	exprQueue.Push([2]uint{leftCopy.Subtree(0).Self(), rightCopy.Subtree(0).Self()})
+	q := queue.New[[2]uint]()
+	q.Push([2]uint{leftCopy.Subtree(0).Self(), rightCopy.Subtree(0).Self()})
 
 	var lhs, rhs expression.Expression
 
-	for exprQueue.Len() > 0 {
-		el := *exprQueue.Pop()
-
+	for !q.Empty() {
+		el := q.Pop()
 		leftIdx, rightIdx := el[0], el[1]
 		leftTerm, rightTerm := leftCopy.Nodes[leftIdx].Term, rightCopy.Nodes[rightIdx].Term
 
-		// case 0
+		// case 0: both terms are functions
 		if leftTerm.Type == expression.Function && rightTerm.Type == expression.Function {
 			if leftTerm.Op != rightTerm.Op {
 				return false
 			}
 
-			exprQueue.Push([2]uint{leftCopy.Subtree(leftIdx).Left(), rightCopy.Subtree(rightIdx).Left()})
-			exprQueue.Push([2]uint{leftCopy.Subtree(leftIdx).Right(), rightCopy.Subtree(rightIdx).Right()})
-
+			q.Push([2]uint{leftCopy.Subtree(leftIdx).Left(), rightCopy.Subtree(rightIdx).Left()})
+			q.Push([2]uint{leftCopy.Subtree(leftIdx).Right(), rightCopy.Subtree(rightIdx).Right()})
 			continue
 		}
 
 		lhs = *leftCopy.CopySubtree(leftIdx)
 		rhs = *rightCopy.CopySubtree(rightIdx)
 
-		for lhs.Nodes[0].Term.Type == expression.Variable && contains(lhs.Nodes[0].Term.Val) {
+		for lhs.Nodes[0].Term.Type == expression.Variable && subContains(lhs.Nodes[0].Term.Val) {
 			shouldNegate := lhs.Nodes[0].Term.Op == expression.Negation
-			// lhs = sub[lhs.Nodes[0].Term.Val]
 			tmp := sub[lhs.Nodes[0].Term.Val]
 			_ = deepcopy.Copy(&lhs, &tmp)
 			if shouldNegate {
 				lhs.Negation(0)
 			}
 		}
-
-		for rhs.Nodes[0].Term.Type == expression.Variable && contains(rhs.Nodes[0].Term.Val) {
+		for rhs.Nodes[0].Term.Type == expression.Variable && subContains(rhs.Nodes[0].Term.Val) {
 			shouldNegate := rhs.Nodes[0].Term.Op == expression.Negation
-			// rhs = sub[rhs.Nodes[0].Term.Val]
 			tmp := sub[rhs.Nodes[0].Term.Val]
 			_ = deepcopy.Copy(&rhs, &tmp)
 			if shouldNegate {
@@ -113,7 +128,7 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 			}
 		}
 
-		// case 1
+		// case 1: both terms are constants
 		if lhs.Nodes[0].Term.Type == expression.Constant && rhs.Nodes[0].Term.Type == expression.Constant {
 			if lhs.Nodes[0].Term != rhs.Nodes[0].Term {
 				return false
@@ -121,7 +136,7 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 			continue
 		}
 
-		// case 2
+		// case 2: left term is constant and right is variable
 		if lhs.Nodes[0].Term.Type == expression.Constant && rhs.Nodes[0].Term.Type == expression.Variable {
 			if rhs.Nodes[0].Term.Op == expression.Negation {
 				if lhs.Nodes[0].Term.Op != expression.Negation {
@@ -137,7 +152,7 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 			continue
 		}
 
-		// case 3
+		// case 3: left term is variable and right is constant
 		if lhs.Nodes[0].Term.Type == expression.Variable && rhs.Nodes[0].Term.Type == expression.Constant {
 			if lhs.Nodes[0].Term.Op == expression.Negation {
 				if rhs.Nodes[0].Term.Op != expression.Negation {
@@ -150,26 +165,22 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 			if !AddConstraint(lhs.Nodes[0].Term, rhs, sub) {
 				return false
 			}
-
 			continue
 		}
 
-		// case 4
+		// case 4: both terms are variables
 		if lhs.Nodes[0].Term.Type == expression.Variable && rhs.Nodes[0].Term.Type == expression.Variable {
 			if lhs.Nodes[0].Term.Val == rhs.Nodes[0].Term.Val {
 				if lhs.Nodes[0].Term.Op != rhs.Nodes[0].Term.Op {
 					return false
 				}
-
 				continue
 			}
 
-			// add new variable
 			op := expression.Nop
 			if lhs.Nodes[0].Term.Op == expression.Negation || rhs.Nodes[0].Term.Op == expression.Negation {
 				op = expression.Negation
 			}
-
 			expr := *expression.NewExpressionWithTerm(expression.Term{
 				Type: expression.Variable,
 				Op:   op,
@@ -185,6 +196,7 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 			} else {
 				AddConstraint(lhs.Nodes[0].Term, expr, sub)
 			}
+
 			if rhs.Nodes[0].Term.Op == expression.Negation {
 				AddConstraint(rhs.Nodes[0].Term, negExpr, sub)
 			} else {
@@ -194,7 +206,7 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 			continue
 		}
 
-		// case 5
+		// case 5: left term is a function
 		if lhs.Nodes[0].Term.Type == expression.Function {
 			if rhs.Nodes[0].Term.Type != expression.Variable {
 				return false
@@ -211,7 +223,7 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 			continue
 		}
 
-		// case 6
+		// case 6: right term is a function
 		if rhs.Nodes[0].Term.Type == expression.Function {
 			if lhs.Nodes[0].Term.Type != expression.Variable {
 				return false
@@ -240,32 +252,28 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 
 	order := TopologicalSort(adjacent, v-1)
 	for i := range order {
-		order[i] = order[i] + 1
+		order[i] += 1
 
-		if _, exists := sub[order[i]]; !exists {
+		if !subContains(order[i]) {
 			continue
 		}
 
-		// var expr expression.Expression
-		// tmp := sub[order[i]]
-		// _ = deepcopy.Copy(&expr, &tmp)
+		var expr expression.Expression
 		tmp := sub[order[i]]
-		expr := &tmp
+		_ = deepcopy.Copy(&expr, &tmp)
 		if expr.Nodes[0].Term.Type != expression.Function {
 			continue
 		}
 
-		for _, value := range expr.Variables() {
-			if _, exists := sub[value]; !exists {
+		for _, w := range expr.Variables() {
+			if !subContains(w) {
 				continue
 			}
 
 			var replacement expression.Expression
-			tmp = sub[value]
+			tmp = sub[w]
 			_ = deepcopy.Copy(&replacement, &tmp)
-			// replacement := sub[value]
-
-			for replacement.Nodes[0].Term.Type == expression.Variable && contains(replacement.Nodes[0].Term.Val) {
+			for replacement.Nodes[0].Term.Type == expression.Variable && subContains(replacement.Nodes[0].Term.Val) {
 				shouldNegate := replacement.Nodes[0].Term.Op == expression.Negation
 				tmp = sub[replacement.Nodes[0].Term.Val]
 				_ = deepcopy.Copy(&replacement, &tmp)
@@ -277,34 +285,17 @@ func GetUnification(left, right expression.Expression, substitution *map[express
 			toCheck := expression.Term{
 				Type: expression.Variable,
 				Op:   expression.Nop,
-				Val:  value,
+				Val:  w,
 			}
 			if replacement.Contains(toCheck) {
 				return false
 			}
 
-			expr.Replace(value, replacement)
+			expr.Replace(w, replacement)
+			sub[order[i]] = expr
 		}
 	}
 
 	*substitution = sub
 	return true
-}
-
-func IsEqual(left, right expression.Expression) bool {
-	if left.Size() != right.Size() {
-		return false
-	}
-
-	if left.Nodes[0].Term.Op != right.Nodes[0].Term.Op {
-		return false
-	}
-
-	var leftCopy, rightCopy expression.Expression
-	_ = deepcopy.Copy(&leftCopy, &left)
-	_ = deepcopy.Copy(&rightCopy, &right)
-	leftCopy.Normalize()
-	rightCopy.Normalize()
-
-	return leftCopy.Equals(rightCopy, true)
 }

@@ -51,6 +51,38 @@ func (e *Expression) inRange(idx uint) bool {
 	return idx < uint(len(e.Nodes))
 }
 
+func (e *Expression) Size() int {
+	return len(e.Nodes)
+}
+
+func (e *Expression) Operations(op Operation) uint {
+	count := uint(0)
+	for _, node := range e.Nodes {
+		if node.Term.Type != Function {
+			continue
+		}
+
+		if node.Term.Op == op {
+			count++
+		}
+	}
+	return count
+}
+
+func (e *Expression) Empty() bool {
+	return len(e.Nodes) == 0
+}
+
+func (e *Expression) Variables() []Value {
+	result := make([]Value, 0, len(e.Nodes))
+	for _, node := range e.Nodes {
+		if node.Term.Type == Variable {
+			result = append(result, node.Term.Val)
+		}
+	}
+	return result
+}
+
 func (e *Expression) updateRep() {
 	if e.Empty() {
 		e.rep = "empty"
@@ -90,43 +122,11 @@ func (e *Expression) updateRep() {
 	e.mod = false
 }
 
-func (e *Expression) Empty() bool {
-	return len(e.Nodes) == 0
-}
-
-func (e *Expression) Size() int {
-	return len(e.Nodes)
-}
-
 func (e *Expression) String() string {
 	if e.mod {
 		e.updateRep()
 	}
 	return e.rep
-}
-
-func (e *Expression) Operations(op Operation) uint {
-	count := uint(0)
-	for _, node := range e.Nodes {
-		if node.Term.Type != Function {
-			continue
-		}
-
-		if node.Term.Op == op {
-			count++
-		}
-	}
-	return count
-}
-
-func (e *Expression) Variables() []Value {
-	result := make([]Value, 0, len(e.Nodes))
-	for _, node := range e.Nodes {
-		if node.Term.Type == Variable {
-			result = append(result, node.Term.Val)
-		}
-	}
-	return result
 }
 
 func (e *Expression) MaxValue() Value {
@@ -252,11 +252,7 @@ func (e *Expression) CopySubtree(idx uint) *Expression {
 				return
 			}
 
-			var tmp Node
-			selfNode := e.Nodes[node.Self()]
-			_ = deepcopy.Copy(&tmp, &selfNode)
-
-			nodes = append(nodes, tmp)
+			nodes = append(nodes, e.Nodes[node.Self()])
 			remapping[node.Self()] = i
 			i++
 
@@ -357,13 +353,12 @@ func (e *Expression) ChangeVariables(bound Value) {
 	e.mod = true
 }
 
-func (e *Expression) Replace(val Value, expr Expression) Expression {
+func (e *Expression) Replace(val Value, expr Expression) {
 	if expr.Empty() {
-		return *e
+		return
 	}
 
 	indices := make([]uint, 0)
-
 	var newExpr, newExprNeg Expression
 	_ = deepcopy.Copy(&newExpr, &expr)
 	_ = deepcopy.Copy(&newExprNeg, &expr)
@@ -379,7 +374,7 @@ func (e *Expression) Replace(val Value, expr Expression) Expression {
 	}
 
 	if len(indices) == 0 {
-		return *e
+		return
 	}
 
 	offset := e.Size()
@@ -421,7 +416,6 @@ func (e *Expression) Replace(val Value, expr Expression) Expression {
 	}
 
 	e.mod = true
-	return *e
 }
 
 func Construct(lhs Expression, op Operation, rhs Expression) Expression {
@@ -465,7 +459,7 @@ func (e *Expression) Equals(other Expression, varIgnore bool) bool {
 			return false
 		}
 
-		if e.Nodes[i].Term.Type == Function && e.Nodes[i].Term.Op != other.Nodes[i].Term.Op {
+		if (e.Nodes[i].Term.Type == Function) && (e.Nodes[i].Term.Op != other.Nodes[i].Term.Op) {
 			return false
 		}
 
@@ -473,7 +467,7 @@ func (e *Expression) Equals(other Expression, varIgnore bool) bool {
 			return false
 		}
 
-		if e.Nodes[i].Term.Val != other.Nodes[i].Term.Val || e.Nodes[i].Term.Op != other.Nodes[i].Term.Op {
+		if (e.Nodes[i].Term.Val != other.Nodes[i].Term.Val) || (e.Nodes[i].Term.Op != other.Nodes[i].Term.Op) {
 			return false
 		}
 	}

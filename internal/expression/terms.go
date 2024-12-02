@@ -22,14 +22,6 @@ type Term struct {
 	Val  Value
 }
 
-func NewTerm() Term {
-	return Term{
-		Type: None,
-		Op:   Nop,
-		Val:  Value(0),
-	}
-}
-
 func (t Term) String() string {
 	var builder strings.Builder
 
