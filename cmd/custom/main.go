@@ -5,7 +5,6 @@ import (
 	"logical-inference/internal/expression"
 	"logical-inference/internal/logicparser"
 	"logical-inference/internal/solver"
-	_ "logical-inference/internal/solver"
 )
 
 func main() {
@@ -38,5 +37,5 @@ func main() {
 	}
 
 	slv.Solve()
-	// fmt.Println(slv.ThoughtChain()) */
+	fmt.Println(slv.ThoughtChain())
 }

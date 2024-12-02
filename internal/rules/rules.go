@@ -34,6 +34,7 @@ func ApplyModusPonens(lhs, rhs expression.Expression) *expression.Expression {
 		if tmp, exists := substitution[value]; exists {
 			var change expression.Expression
 			_ = deepcopy.Copy(&change, &tmp)
+
 			for change.Nodes[0].Term.Type == expression.Variable && contains(change.Nodes[0].Term.Val) {
 				shouldNegate := change.Nodes[0].Term.Op == expression.Negation
 				tmp = substitution[change.Nodes[0].Term.Val]

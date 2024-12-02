@@ -134,7 +134,6 @@ func (s *Solver) isTargetProvedBy(expr expression.Expression) bool {
 	return false
 }
 
-// Проверка, является ли выражение хорошим
 func (s *Solver) isGoodExpression(expr expression.Expression, maxLen int) bool {
 	return !(expr.Size() > maxLen || expr.Empty() ||
 		expr.Nodes[0].Term.Op == expression.Conjunction ||
@@ -165,30 +164,25 @@ func (s *Solver) produce(maxLen int) {
 	var expr expression.Expression
 
 	for i := range s.produced {
-		// Проверка времени
 		if msSinceEpoch() > s.timeLimit {
 			break
 		}
 
-		// Пропустить слишком длинные выражения
 		if s.produced[i].Size() > maxLen {
 			continue
 		}
 
-		// Нормализовать и добавить выражение к аксиомам
 		s.produced[i].Normalize()
-		var tmp expression.Expression
-		e := s.produced[i]
-		_ = deepcopy.Copy(&tmp, &e)
-		s.axioms = append(s.axioms, tmp)
+		tmp := s.produced[i]
+		var copiedTmp expression.Expression
+		_ = deepcopy.Copy(&copiedTmp, &tmp)
+		s.axioms = append(s.axioms, copiedTmp)
 
-		// Проверить, доказано ли целевое выражение
-		if s.isTargetProvedBy(s.axioms[len(s.axioms)-1]) {
+		if s.isTargetProvedBy(copiedTmp) {
 			return
 		}
 
-		// Создать новые выражения через modus-ponens
-		for j := range s.axioms {
+		for j := 0; j < len(s.axioms); j++ {
 			expr = *rules.ApplyModusPonens(s.axioms[j], s.axioms[len(s.axioms)-1])
 
 			if !s.isGoodExpression(expr, maxLen) || s.knownAxioms.Has(expr.String()) {
@@ -197,17 +191,18 @@ func (s *Solver) produce(maxLen int) {
 
 			_ = deepcopy.Copy(&tmp, &expr)
 			newlyProduced = append(newlyProduced, tmp)
-			s.knownAxioms.Add(expr.String())
+			s.knownAxioms.Add(tmp.String())
 
-			_, err := fmt.Fprintf(s.outputFile, "%s mp %s %s\n", expr.String(), s.axioms[j].String(), s.axioms[len(s.axioms)-1].String())
+			_, err := fmt.Fprintf(s.outputFile, "%s mp %s %s\n", tmp.String(), s.axioms[j].String(), s.axioms[len(s.axioms)-1].String())
 			if err != nil {
 				fmt.Println(err)
 				return
 			}
 
-			if s.isTargetProvedBy(expr) {
-				_ = deepcopy.Copy(&tmp, &expr)
-				s.axioms = append(s.axioms, tmp)
+			if s.isTargetProvedBy(tmp) {
+				var axiom expression.Expression
+				_ = deepcopy.Copy(&axiom, &tmp)
+				s.axioms = append(s.axioms, axiom)
 				return
 			}
 
@@ -215,7 +210,7 @@ func (s *Solver) produce(maxLen int) {
 				break
 			}
 
-			// Инверсный порядок modus ponens
+			// Обратный порядок
 			expr = *rules.ApplyModusPonens(s.axioms[len(s.axioms)-1], s.axioms[j])
 
 			if !s.isGoodExpression(expr, maxLen) || s.knownAxioms.Has(expr.String()) {
@@ -224,23 +219,23 @@ func (s *Solver) produce(maxLen int) {
 
 			_ = deepcopy.Copy(&tmp, &expr)
 			newlyProduced = append(newlyProduced, tmp)
-			s.knownAxioms.Add(expr.String())
+			s.knownAxioms.Add(tmp.String())
 
-			_, err = fmt.Fprintf(s.outputFile, "%s mp %s %s\n", expr.String(), s.axioms[len(s.axioms)-1].String(), s.axioms[j].String())
+			_, err = fmt.Fprintf(s.outputFile, "%s mp %s %s\n", tmp.String(), s.axioms[len(s.axioms)-1].String(), s.axioms[j].String())
 			if err != nil {
 				fmt.Println(err)
 				return
 			}
 
-			if s.isTargetProvedBy(expr) {
-				_ = deepcopy.Copy(&tmp, &expr)
-				s.axioms = append(s.axioms, tmp)
+			if s.isTargetProvedBy(tmp) {
+				var axiom expression.Expression
+				_ = deepcopy.Copy(&axiom, &tmp)
+				s.axioms = append(s.axioms, axiom)
 				return
 			}
 		}
 	}
 
-	// Проверка времени
 	if msSinceEpoch() > s.timeLimit {
 		return
 	}
@@ -267,9 +262,11 @@ func (s *Solver) Solve() {
 
 	for i := range s.axioms {
 		s.axioms[i].Normalize()
-		var tmp expression.Expression
-		_ = deepcopy.Copy(&tmp, s.axioms[i])
-		s.produced = append(s.produced, tmp)
+
+		tmp := s.axioms[i]
+		var copiedTmp expression.Expression
+		_ = deepcopy.Copy(&copiedTmp, &tmp)
+		s.produced = append(s.produced, copiedTmp)
 
 		_, err := fmt.Fprintf(s.outputFile, "%s axiom\n", s.axioms[i].String())
 		if err != nil {
@@ -285,9 +282,10 @@ func (s *Solver) Solve() {
 
 	// calculate the stopping criterion
 	now := msSinceEpoch()
-	s.timeLimit = now + s.timeLimit
 	if now > math.MaxUint64-s.timeLimit {
 		s.timeLimit = math.MaxUint64
+	} else {
+		s.timeLimit = now + s.timeLimit
 	}
 
 	for msSinceEpoch() < s.timeLimit {
