@@ -5,6 +5,7 @@ import (
 	"logical-inference/internal/expression"
 	"logical-inference/internal/logicparser"
 	"logical-inference/internal/solver"
+	"time"
 )
 
 func main() {
@@ -14,7 +15,14 @@ func main() {
 		*logicparser.NewExpressionWithString("(!a>!b)>((!a>b)>a)"),
 	}
 
-	target := *logicparser.NewExpressionWithString("a*b>a")
+	var input string
+	fmt.Print("Enter expression: ")
+	_, err := fmt.Scan(&input)
+	if err != nil {
+		fmt.Println("Error reading input:", err)
+		return
+	}
+	target := *logicparser.NewExpressionWithString(input)
 	target.Standardize()
 	target.MakeConst()
 
@@ -25,6 +33,7 @@ func main() {
 	}
 	defer slv.Close()
 
+	start := time.Now()
 	err = slv.WriteInitialAxioms()
 	if err != nil {
 		fmt.Println(err)
@@ -32,5 +41,7 @@ func main() {
 	}
 
 	slv.Solve()
+	duration := time.Since(start)
 	fmt.Println(slv.ThoughtChain())
+	fmt.Println("Time elapsed:", duration)
 }
