@@ -1,17 +1,10 @@
 package expression
 
-const invalidIdx = -1
+const invalidIdx = ^uint(0)
 
-func increaseIdx(idx, offset int) int {
+func increaseIdx(idx, offset uint) uint {
 	if idx == invalidIdx {
 		return invalidIdx
 	}
 	return idx + offset
-}
-
-func decreaseIdx(idx, offset int) int {
-	if idx == invalidIdx || offset > idx {
-		return invalidIdx
-	}
-	return idx - offset
 }

@@ -4,32 +4,24 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/scylladb/go-set/strset"
+	"github.com/tiendc/go-deepcopy"
 	"logical-inference/internal/expression"
 	"logical-inference/internal/helper"
-	inferencerules "logical-inference/internal/inference_rules"
-	"logical-inference/internal/parser"
+	"logical-inference/internal/logicparser"
+	"logical-inference/internal/pkg/alphabet"
+	"logical-inference/internal/rules"
 	"math"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
 
 type Node struct {
-	Expression_   string   // Строковое представление выражения
-	Rule_         string   // Правило вывода
-	Dependencies_ []string // Зависимости
-}
-
-func NewNode(expression, rule string) Node {
-	if rule == "" {
-		rule = "axiom"
-	}
-	return Node{
-		Expression_:   expression,
-		Rule_:         rule,
-		Dependencies_: []string{},
-	}
+	Expression   string   // Строковое представление выражения
+	Rule         string   // Правило вывода
+	Dependencies []string // Зависимости
 }
 
 func msSinceEpoch() uint64 {
@@ -46,64 +38,63 @@ type Solver struct {
 
 	builder    strings.Builder
 	outputFile *os.File
+	fileWriter *bufio.Writer
 }
 
-func New(axioms []expression.Expression, target expression.Expression, timeLimit uint64) (Solver, error) {
+func New(axioms []expression.Expression, target expression.Expression, timeLimit uint64) (*Solver, error) {
 	if timeLimit < 1 {
 		timeLimit = 60000
 	}
 
 	if len(axioms) < 3 {
-		return Solver{}, fmt.Errorf("not enough axioms to solve (3 required)")
+		return nil, fmt.Errorf("not enough axioms to solve (3 required)")
 	}
 
 	file, err := os.Create("conclusions.txt")
 	if err != nil {
-		return Solver{}, fmt.Errorf("failed to create file: %w", err)
+		return nil, fmt.Errorf("failed to create file: %w", err)
 	}
 
-	return Solver{
+	var targetCopy expression.Expression
+	_ = deepcopy.Copy(&targetCopy, &target)
+
+	return &Solver{
 		knownAxioms: *strset.New(),
 		axioms:      axioms,
 		produced:    []expression.Expression{},
-		targets:     []expression.Expression{target},
+		targets:     []expression.Expression{targetCopy},
 		timeLimit:   timeLimit,
 		builder:     strings.Builder{},
 		outputFile:  file,
+		fileWriter:  bufio.NewWriter(file),
 	}, nil
 }
 
-func (s *Solver) Close() error {
-	// Функция закрывает поток вывода, необходимо использовать всегда.
+// Close закрывает поток вывода, необходимо использовать всегда.
+func (s *Solver) Close() {
 	if s.outputFile != nil {
-		return s.outputFile.Close()
+		err := s.outputFile.Close()
+		if err != nil {
+			fmt.Println("failed to close output file:", err)
+		}
 	}
-	return nil
 }
 
 func (s *Solver) WriteInitialAxioms() error {
-	newParsers := []parser.Parser{
-		parser.NewParser("a>(b>a)"),
-		parser.NewParser("(a>(b>c))>((a>b)>(a>c))"),
-		parser.NewParser("(!a>!b)>((!a>b)>a)"),
-	}
-	axioms := make([]expression.Expression, 0, len(newParsers))
-	for _, newParser := range newParsers {
-		expr, err := newParser.Parse()
-		if err != nil {
-			return err
-		}
-		axioms = append(axioms, expr)
+	axioms := []expression.Expression{
+		*logicparser.NewExpressionWithString("a>(b>a)"),
+		*logicparser.NewExpressionWithString("(a>(b>c))>((a>b)>(a>c))"),
+		*logicparser.NewExpressionWithString("(!a>!b)>((!a>b)>a)"),
 	}
 
-	axioms = append(axioms, inferencerules.ApplyModusPonens(axioms[0], axioms[0]))
-	axioms = append(axioms, inferencerules.ApplyModusPonens(axioms[1], axioms[0]))
-	axioms = append(axioms, inferencerules.ApplyModusPonens(axioms[3], axioms[1]))
-	axioms = append(axioms, inferencerules.ApplyModusPonens(axioms[4], axioms[1]))
-	axioms = append(axioms, inferencerules.ApplyModusPonens(axioms[2], axioms[5]))
-	axioms = append(axioms, inferencerules.ApplyModusPonens(axioms[6], axioms[6]))
-	axioms = append(axioms, inferencerules.ApplyModusPonens(axioms[7], axioms[8]))
-	axioms = append(axioms, inferencerules.ApplyModusPonens(axioms[3], axioms[9]))
+	axioms = append(axioms, *rules.ApplyModusPonens(axioms[0], axioms[0]))
+	axioms = append(axioms, *rules.ApplyModusPonens(axioms[1], axioms[0]))
+	axioms = append(axioms, *rules.ApplyModusPonens(axioms[3], axioms[1]))
+	axioms = append(axioms, *rules.ApplyModusPonens(axioms[4], axioms[1]))
+	axioms = append(axioms, *rules.ApplyModusPonens(axioms[2], axioms[5]))
+	axioms = append(axioms, *rules.ApplyModusPonens(axioms[6], axioms[6]))
+	axioms = append(axioms, *rules.ApplyModusPonens(axioms[7], axioms[8]))
+	axioms = append(axioms, *rules.ApplyModusPonens(axioms[3], axioms[9]))
 
 	trios := [][3]int{
 		{3, 0, 0},
@@ -117,7 +108,8 @@ func (s *Solver) WriteInitialAxioms() error {
 	}
 
 	for _, t := range trios {
-		if _, err := fmt.Fprintln(s.outputFile, axioms[t[0]], " mp ", axioms[t[1]], " ", axioms[t[2]]); err != nil {
+		if _, err := fmt.Fprintf(s.fileWriter, "%s mp %s %s\n", axioms[t[0]].String(), axioms[t[1]].String(),
+			axioms[t[2]].String()); err != nil {
 			return err
 		}
 	}
@@ -138,7 +130,6 @@ func (s *Solver) isTargetProvedBy(expr expression.Expression) bool {
 	return false
 }
 
-// Проверка, является ли выражение хорошим
 func (s *Solver) isGoodExpression(expr expression.Expression, maxLen int) bool {
 	return !(expr.Size() > maxLen || expr.Empty() ||
 		expr.Nodes[0].Term.Op == expression.Conjunction ||
@@ -155,8 +146,8 @@ func (s *Solver) deductionTheoremDecomposition(expr expression.Expression) bool 
 	}
 
 	// Γ ⊢ A → B <=> Γ U {A} ⊢ B
-	s.axioms = append(s.axioms, expr.CopySubtree(expr.Subtree(0).Left()))
-	s.targets = append(s.targets, expr.CopySubtree(expr.Subtree(0).Right()))
+	s.axioms = append(s.axioms, *expr.CopySubtree(expr.Subtree(0).Left()))
+	s.targets = append(s.targets, *expr.CopySubtree(expr.Subtree(0).Right()))
 	return true
 }
 
@@ -166,71 +157,81 @@ func (s *Solver) produce(maxLen int) {
 	}
 
 	newlyProduced := make([]expression.Expression, 0, len(s.produced)*2)
+	var expr expression.Expression
 
-	for _, expr := range s.produced {
-		// Проверка времени
+	for i := range s.produced {
 		if msSinceEpoch() > s.timeLimit {
 			break
 		}
 
-		// Пропустить слишком длинные выражения
-		if expr.Size() > maxLen {
+		if s.produced[i].Size() > maxLen {
 			continue
 		}
 
-		// Нормализовать и добавить выражение к аксиомам
-		expr.Normalize()
-		s.axioms = append(s.axioms, expr)
+		s.produced[i].Normalize()
+		tmp := s.produced[i]
+		var copiedTmp expression.Expression
+		_ = deepcopy.Copy(&copiedTmp, &tmp)
+		s.axioms = append(s.axioms, copiedTmp)
 
-		// Проверить, доказано ли целевое выражение
-		if s.isTargetProvedBy(s.axioms[len(s.axioms)-1]) {
+		if s.isTargetProvedBy(copiedTmp) {
 			return
 		}
 
-		// Создавать новые выражения через modus-ponens
 		for j := 0; j < len(s.axioms); j++ {
-			newExpr := inferencerules.ApplyModusPonens(s.axioms[j], s.axioms[len(s.axioms)-1])
+			expr = *rules.ApplyModusPonens(s.axioms[j], s.axioms[len(s.axioms)-1])
 
-			if !s.isGoodExpression(newExpr, maxLen) || s.knownAxioms.Has(newExpr.String()) {
+			if !s.isGoodExpression(expr, maxLen) || s.knownAxioms.Has(expr.String()) {
 				continue
 			}
 
-			newlyProduced = append(newlyProduced, newExpr)
-			s.knownAxioms.Add(newExpr.String())
+			_ = deepcopy.Copy(&tmp, &expr)
+			newlyProduced = append(newlyProduced, tmp)
+			s.knownAxioms.Add(tmp.String())
 
-			// s.dump.Println("%s mp %s %s\n", newExpr.String(), s.axioms[j].String(), s.axioms[len(s.axioms)-1].String())
-			fmt.Printf("%s mp %s %s\n", newExpr.String(), s.axioms[j].String(), s.axioms[len(s.axioms)-1].String())
-
-			if s.isTargetProvedBy(newExpr) {
-				s.axioms = append(s.axioms, newlyProduced[len(newlyProduced)-1])
+			_, err := fmt.Fprintf(s.fileWriter, "%s mp %s %s\n", tmp.String(), s.axioms[j].String(), s.axioms[len(s.axioms)-1].String())
+			if err != nil {
+				fmt.Println(err)
 				return
 			}
 
-			if j+1 == len(s.axioms) {
+			if s.isTargetProvedBy(tmp) {
+				var axiom expression.Expression
+				_ = deepcopy.Copy(&axiom, &tmp)
+				s.axioms = append(s.axioms, axiom)
+				return
+			}
+
+			if len(s.axioms) == j+1 {
 				break
 			}
 
-			// Инверсный порядок modus ponens
-			newExpr = inferencerules.ApplyModusPonens(s.axioms[len(s.axioms)-1], s.axioms[j])
+			// Обратный порядок
+			expr = *rules.ApplyModusPonens(s.axioms[len(s.axioms)-1], s.axioms[j])
 
-			if !s.isGoodExpression(newExpr, maxLen) || s.knownAxioms.Has(newExpr.String()) {
+			if !s.isGoodExpression(expr, maxLen) || s.knownAxioms.Has(expr.String()) {
 				continue
 			}
 
-			newlyProduced = append(newlyProduced, newExpr)
-			s.knownAxioms.Add(newExpr.String())
+			_ = deepcopy.Copy(&tmp, &expr)
+			newlyProduced = append(newlyProduced, tmp)
+			s.knownAxioms.Add(tmp.String())
 
-			//s.dump.Printf("%s mp %s %s\n", newExpr.String(), expr.String(), s.axioms[j].String())
-			fmt.Printf("%s mp %s %s\n", newExpr.String(), s.axioms[len(s.axioms)-1].String(), s.axioms[j].String())
+			_, err = fmt.Fprintf(s.fileWriter, "%s mp %s %s\n", tmp.String(), s.axioms[len(s.axioms)-1].String(), s.axioms[j].String())
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
 
-			if s.isTargetProvedBy(newlyProduced[len(newlyProduced)-1]) {
-				s.axioms = append(s.axioms, newlyProduced[len(newlyProduced)-1])
+			if s.isTargetProvedBy(tmp) {
+				var axiom expression.Expression
+				_ = deepcopy.Copy(&axiom, &tmp)
+				s.axioms = append(s.axioms, axiom)
 				return
 			}
 		}
 	}
 
-	// Проверка времени
 	if msSinceEpoch() > s.timeLimit {
 		return
 	}
@@ -245,57 +246,66 @@ func (s *Solver) produce(maxLen int) {
 
 func (s *Solver) Solve() {
 	s.builder.Reset()
-	len_ := 20
+	limit := 20
 
 	for s.deductionTheoremDecomposition(s.targets[len(s.targets)-1]) {
 		prev := s.targets[len(s.targets)-2]
 		curr := s.targets[len(s.targets)-1]
 		axiom := s.axioms[len(s.axioms)-1]
-		fmt.Println(prev.String())
-		fmt.Println(curr.String())
-		fmt.Println(axiom.String())
-		//fmt.Fprintf(&s.ss, "deduction theorem: Γ ⊢ %s <=> Γ U { %s } ⊢ %s\n", prev.String(), axiom.String(), curr.String())
-		s.builder.WriteString(fmt.Sprintf("deduction theorem: Γ ⊢ %s <=> Γ U { %s } ⊢ %s\n", prev.String(), axiom.String(), curr.String()))
+
+		s.builder.WriteString(fmt.Sprintf("deduction theorem: Γ ⊢ %s <=> Γ U {%s} ⊢ %s\n", prev.String(), axiom.String(), curr.String()))
 	}
 
-	for i := 0; i < len(s.axioms); i++ {
+	for i := range s.axioms {
 		s.axioms[i].Normalize()
-		s.produced = append(s.produced, s.axioms[i])
-		fmt.Printf("%s axiom\n", s.axioms[i].String())
+
+		tmp := s.axioms[i]
+		var copiedTmp expression.Expression
+		_ = deepcopy.Copy(&copiedTmp, &tmp)
+		s.produced = append(s.produced, copiedTmp)
+
+		_, err := fmt.Fprintf(s.fileWriter, "%s axiom\n", s.axioms[i].String())
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 	}
 
 	// isr rule
-	newParser := parser.NewParser("(!a>!b)>(b>a)")
-	exp, _ := newParser.Parse()
-	s.produced = append(s.produced, exp)
-	s.axioms = nil
+	s.produced = append(s.produced, *logicparser.NewExpressionWithString("(!a>!b)>(b>a)"))
+	s.axioms = make([]expression.Expression, 0)
 	s.knownAxioms = *strset.New()
+
 	// calculate the stopping criterion
-	time_ := msSinceEpoch()
-	s.timeLimit = time_ + s.timeLimit
-	if time_ > math.MaxUint64-s.timeLimit {
+	now := msSinceEpoch()
+	if now > math.MaxUint64-s.timeLimit {
 		s.timeLimit = math.MaxUint64
+	} else {
+		s.timeLimit = now + s.timeLimit
 	}
+
 	for msSinceEpoch() < s.timeLimit {
-		s.produce(len_)
+		s.produce(limit)
 		if s.isTargetProvedBy(s.axioms[len(s.axioms)-1]) {
 			break
 		}
 	}
-	found := true
+
+	found := false
 	for _, expr := range s.axioms {
 		if s.isTargetProvedBy(expr) {
-			found = false
+			found = true
 			break
 		}
 	}
-	if found {
+
+	if !found {
 		s.builder.WriteString("No proof was found in the time allotted\n")
 		return
 	}
 
-	proof := expression.NewExpression()
-	targetProved := expression.NewExpression()
+	proof := *expression.NewExpression()
+	targetProved := *expression.NewExpression()
 
 	for _, axiom := range s.axioms {
 		if !proof.Empty() {
@@ -304,156 +314,138 @@ func (s *Solver) Solve() {
 
 		for _, target := range s.targets {
 			if helper.IsEqual(target, axiom) {
-				proof = axiom
-				targetProved = target
+				_ = deepcopy.Copy(&proof, &axiom)
+				_ = deepcopy.Copy(&targetProved, &target)
 				break
 			}
 		}
+	}
+
+	if err := s.fileWriter.Flush(); err != nil {
+		fmt.Println("Error flushing writer:", err)
+		return
 	}
 	s.buildThoughtChain(proof, targetProved)
 }
 
 func (s *Solver) buildThoughtChain(proof expression.Expression, provedTarget expression.Expression) {
-	file, err := os.Open("conclusions.txt")
-	if err != nil {
-		fmt.Println("Error opening file:", err)
+	if _, err := s.outputFile.Seek(0, 0); err != nil {
+		fmt.Println("Error seeking file:", err)
 		return
 	}
-	defer func(file *os.File) {
-		err := file.Close()
-		if err != nil {
-			fmt.Println("Error closing file:", err)
-		}
-	}(file)
 
-	conclusions_ := make(map[string]Node)
+	conclusions := make(map[string]Node)
 	indices := make(map[string]int)
-	processedProofs := make(map[string]bool)
 	chain := make(map[int]Node)
+	processedProofs := *strset.New()
 	nextIndex := 1
 
-	scanner := bufio.NewScanner(file)
-
+	scanner := bufio.NewScanner(s.outputFile)
 	for scanner.Scan() {
-		line := scanner.Text() // Read the current line
-		// Split the line into parts
+		line := scanner.Text()
 		parts := strings.Fields(line)
 		if len(parts) < 2 {
 			continue // Skip if the line doesn't contain at least an expression and a rule
 		}
 
-		expression_ := parts[0]
+		expr := parts[0]
 		rule := parts[1]
 
 		// Skip if the expression already exists in the map
-		if _, exists := conclusions_[expression_]; exists {
+		if _, exists := conclusions[expr]; exists {
 			continue
 		}
 
-		conclusions_[expression_] = Node{
-			Expression_: expression_,
-			Rule_:       rule,
+		conclusions[expr] = Node{
+			Expression:   expr,
+			Rule:         rule,
+			Dependencies: parts[2:],
 		}
-
-		// We extract the Node from the map, update the dependencies and save them back
-		node := conclusions_[expression_]
-		for _, dependency := range parts[2:] {
-			node.Dependencies_ = append(node.Dependencies_, dependency)
-		}
-		// Saving the updated Node back to the map
-		conclusions_[expression_] = node
 	}
 
 	var treeLevels [][]string
 	treeLevels = append(treeLevels, []string{proof.String()})
 
 	for len(treeLevels) > 0 && len(treeLevels[len(treeLevels)-1]) > 0 {
-		var level []string
-
-		for _, expression_ := range treeLevels[len(treeLevels)-1] {
-			node := conclusions_[expression_]
-
-			if _, exists := processedProofs[node.Expression_]; exists {
+		level := make([]string, 0)
+		for _, expr := range treeLevels[len(treeLevels)-1] {
+			node := conclusions[expr]
+			if processedProofs.Has(node.Expression) {
 				continue
 			}
 
-			if node.Rule_ == "axiom" {
-				if _, exists := indices[node.Expression_]; exists {
+			if node.Rule == "axiom" {
+				if _, exists := indices[node.Expression]; exists {
 					continue
 				}
 
 				chain[nextIndex] = node
-				indices[node.Expression_] = nextIndex
+				indices[node.Expression] = nextIndex
 				nextIndex++
 			}
-			// Add dependencies
-			for _, dependency := range node.Dependencies_ {
-				level = append(level, dependency)
+
+			for _, dep := range node.Dependencies {
+				level = append(level, dep)
 			}
-			// Add express in processedProofs
-			processedProofs[node.Expression_] = false
+
+			processedProofs.Add(node.Expression)
 		}
 		treeLevels = append(treeLevels, level)
 	}
+
 	// Reverse the treeLevels slice
 	for i, j := 0, len(treeLevels)-1; i < j; i, j = i+1, j-1 {
 		treeLevels[i], treeLevels[j] = treeLevels[j], treeLevels[i]
 	}
-	// Iterate over the reversed treeLevels
+
 	for _, level := range treeLevels {
-		for _, expression_ := range level {
-			// If the expression is already indexed, continue
-			if _, exists := indices[expression_]; exists {
+		for _, expr := range level {
+			if _, exists := indices[expr]; exists {
 				continue
 			}
-			// Add the node to the chain
-			chain[nextIndex] = conclusions_[expression_]
-			indices[expression_] = nextIndex
+
+			chain[nextIndex] = conclusions[expr]
+			indices[expr] = nextIndex
 			nextIndex++
 		}
 	}
 
-	//var sb strings.Builder
-
 	for i := 1; i < nextIndex; i++ {
 		node := chain[i]
-		// Add index and point
 		s.builder.WriteString(fmt.Sprintf("%d. ", i))
-		// fmt.Fprintf(&s.ss, "%d. ", i)
 
-		if node.Rule_ == "axiom" {
+		if node.Rule == "axiom" {
 			s.builder.WriteString("axiom")
 		} else {
-			s.builder.WriteString(node.Rule_ + "(")
+			s.builder.WriteString(fmt.Sprintf("%s(", node.Rule))
+			for k := 0; k < len(node.Dependencies); k++ {
+				s.builder.WriteString(strconv.Itoa(indices[node.Dependencies[k]]))
 
-			// Add dependencies
-			for k, dependency := range node.Dependencies_ {
-				s.builder.WriteString(fmt.Sprintf("%d", indices[dependency]))
-
-				// Add a comma if this is not the last dependency
-				if k+1 != len(node.Dependencies_) {
+				if len(node.Dependencies) != k+1 {
 					s.builder.WriteString(",")
 				}
 			}
 			s.builder.WriteString(")")
 		}
-
-		s.builder.WriteString(fmt.Sprintf(": %s\n", node.Expression_))
+		s.builder.WriteString(fmt.Sprintf(": %s\n", node.Expression))
 	}
 
+	// Change variables if required
 	substitution := make(map[expression.Value]expression.Expression)
-
 	helper.GetUnification(provedTarget, proof, &substitution)
-
 	if len(substitution) == 0 {
 		return
 	}
 
 	s.builder.WriteString(fmt.Sprintf("change variables: %s\n", proof.String()))
-	for v, st := range substitution {
-		s.builder.WriteString(fmt.Sprintf("%c -> %s\n", rune(v+'A'-1), st.String())) // Преобразуем значение в символ
+	for key, value := range substitution {
+		letter, err := alphabet.GetLetter(int(key), true)
+		if err != nil {
+			fmt.Println("Error in substitution, letter set to 'X':", err)
+			letter = 'X'
+		}
+		s.builder.WriteString(fmt.Sprintf("%c \u2192 %s\n", letter, value.String()))
 	}
-
 	s.builder.WriteString(fmt.Sprintf("proved: %s\n", provedTarget.String()))
 }
 

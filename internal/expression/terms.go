@@ -22,23 +22,12 @@ type Term struct {
 	Val  Value
 }
 
-func NewTerm() Term {
-	return Term{
-		Type: None,
-		Op:   Nop,
-		Val:  Value(0),
-	}
-}
-
 func (t Term) String() string {
 	var builder strings.Builder
 
 	if t.Type == None {
 		builder.WriteString("None")
-		return builder.String()
-	}
-
-	if t.Type == Function {
+	} else if t.Type == Function {
 		builder.WriteString(t.Op.String())
 	} else {
 		if t.Op == Negation {
@@ -48,7 +37,7 @@ func (t Term) String() string {
 		isConst := t.Type == Constant
 		letter, err := alphabet.GetLetter(int(math.Abs(float64(t.Val))), !isConst)
 		if err != nil {
-			return ""
+			return "Err"
 		}
 		builder.WriteRune(letter)
 	}
