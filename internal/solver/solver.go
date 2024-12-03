@@ -1,16 +1,19 @@
 package solver
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/scylladb/go-set/strset"
 	"github.com/tiendc/go-deepcopy"
 	"logical-inference/internal/expression"
 	"logical-inference/internal/helper"
 	"logical-inference/internal/logicparser"
+	"logical-inference/internal/pkg/alphabet"
 	"logical-inference/internal/rules"
 	"math"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -19,17 +22,6 @@ type Node struct {
 	Expression   string   // Строковое представление выражения
 	Rule         string   // Правило вывода
 	Dependencies []string // Зависимости
-}
-
-func NewNode(expression, rule string) *Node {
-	if rule == "" {
-		rule = "axiom"
-	}
-	return &Node{
-		Expression:   expression,
-		Rule:         rule,
-		Dependencies: []string{},
-	}
 }
 
 func msSinceEpoch() uint64 {
@@ -46,6 +38,7 @@ type Solver struct {
 
 	builder    strings.Builder
 	outputFile *os.File
+	fileWriter *bufio.Writer
 }
 
 func New(axioms []expression.Expression, target expression.Expression, timeLimit uint64) (*Solver, error) {
@@ -54,12 +47,12 @@ func New(axioms []expression.Expression, target expression.Expression, timeLimit
 	}
 
 	if len(axioms) < 3 {
-		return &Solver{}, fmt.Errorf("not enough axioms to solve (3 required)")
+		return nil, fmt.Errorf("not enough axioms to solve (3 required)")
 	}
 
 	file, err := os.Create("conclusions.txt")
 	if err != nil {
-		return &Solver{}, fmt.Errorf("failed to create file: %w", err)
+		return nil, fmt.Errorf("failed to create file: %w", err)
 	}
 
 	var targetCopy expression.Expression
@@ -73,15 +66,18 @@ func New(axioms []expression.Expression, target expression.Expression, timeLimit
 		timeLimit:   timeLimit,
 		builder:     strings.Builder{},
 		outputFile:  file,
+		fileWriter:  bufio.NewWriter(file),
 	}, nil
 }
 
 // Close закрывает поток вывода, необходимо использовать всегда.
-func (s *Solver) Close() error {
+func (s *Solver) Close() {
 	if s.outputFile != nil {
-		return s.outputFile.Close()
+		err := s.outputFile.Close()
+		if err != nil {
+			fmt.Println("failed to close output file:", err)
+		}
 	}
-	return nil
 }
 
 func (s *Solver) WriteInitialAxioms() error {
@@ -112,7 +108,7 @@ func (s *Solver) WriteInitialAxioms() error {
 	}
 
 	for _, t := range trios {
-		if _, err := fmt.Fprintf(s.outputFile, "%s mp %s %s\n", axioms[t[0]].String(), axioms[t[1]].String(),
+		if _, err := fmt.Fprintf(s.fileWriter, "%s mp %s %s\n", axioms[t[0]].String(), axioms[t[1]].String(),
 			axioms[t[2]].String()); err != nil {
 			return err
 		}
@@ -193,7 +189,7 @@ func (s *Solver) produce(maxLen int) {
 			newlyProduced = append(newlyProduced, tmp)
 			s.knownAxioms.Add(tmp.String())
 
-			_, err := fmt.Fprintf(s.outputFile, "%s mp %s %s\n", tmp.String(), s.axioms[j].String(), s.axioms[len(s.axioms)-1].String())
+			_, err := fmt.Fprintf(s.fileWriter, "%s mp %s %s\n", tmp.String(), s.axioms[j].String(), s.axioms[len(s.axioms)-1].String())
 			if err != nil {
 				fmt.Println(err)
 				return
@@ -221,7 +217,7 @@ func (s *Solver) produce(maxLen int) {
 			newlyProduced = append(newlyProduced, tmp)
 			s.knownAxioms.Add(tmp.String())
 
-			_, err = fmt.Fprintf(s.outputFile, "%s mp %s %s\n", tmp.String(), s.axioms[len(s.axioms)-1].String(), s.axioms[j].String())
+			_, err = fmt.Fprintf(s.fileWriter, "%s mp %s %s\n", tmp.String(), s.axioms[len(s.axioms)-1].String(), s.axioms[j].String())
 			if err != nil {
 				fmt.Println(err)
 				return
@@ -268,7 +264,7 @@ func (s *Solver) Solve() {
 		_ = deepcopy.Copy(&copiedTmp, &tmp)
 		s.produced = append(s.produced, copiedTmp)
 
-		_, err := fmt.Fprintf(s.outputFile, "%s axiom\n", s.axioms[i].String())
+		_, err := fmt.Fprintf(s.fileWriter, "%s axiom\n", s.axioms[i].String())
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -325,151 +321,132 @@ func (s *Solver) Solve() {
 		}
 	}
 
+	if err := s.fileWriter.Flush(); err != nil {
+		fmt.Println("Error flushing writer:", err)
+		return
+	}
 	s.buildThoughtChain(proof, targetProved)
 }
 
 func (s *Solver) buildThoughtChain(proof expression.Expression, provedTarget expression.Expression) {
-	/* file, err := os.Open("conclusions.txt")
-	if err != nil {
-		fmt.Println("Error opening file:", err)
+	if _, err := s.outputFile.Seek(0, 0); err != nil {
+		fmt.Println("Error seeking file:", err)
 		return
 	}
-	defer func(file *os.File) {
-		err := file.Close()
-		if err != nil {
-			fmt.Println("Error closing file:", err)
-		}
-	}(file)
 
-	conclusions_ := make(map[string]Node)
+	conclusions := make(map[string]Node)
 	indices := make(map[string]int)
-	processedProofs := make(map[string]bool)
 	chain := make(map[int]Node)
+	processedProofs := *strset.New()
 	nextIndex := 1
 
-	scanner := bufio.NewScanner(file)
-
+	scanner := bufio.NewScanner(s.outputFile)
 	for scanner.Scan() {
-		line := scanner.Text() // Read the current line
-		// Split the line into parts
+		line := scanner.Text()
 		parts := strings.Fields(line)
 		if len(parts) < 2 {
 			continue // Skip if the line doesn't contain at least an expression and a rule
 		}
 
-		expression_ := parts[0]
+		expr := parts[0]
 		rule := parts[1]
 
 		// Skip if the expression already exists in the map
-		if _, exists := conclusions_[expression_]; exists {
+		if _, exists := conclusions[expr]; exists {
 			continue
 		}
 
-		conclusions_[expression_] = Node{
-			Expression_: expression_,
-			Rule_:       rule,
+		conclusions[expr] = Node{
+			Expression:   expr,
+			Rule:         rule,
+			Dependencies: parts[2:],
 		}
-
-		// We extract the Node from the map, update the dependencies and save them back
-		node := conclusions_[expression_]
-		for _, dependency := range parts[2:] {
-			node.Dependencies_ = append(node.Dependencies_, dependency)
-		}
-		// Saving the updated Node back to the map
-		conclusions_[expression_] = node
 	}
 
 	var treeLevels [][]string
 	treeLevels = append(treeLevels, []string{proof.String()})
 
 	for len(treeLevels) > 0 && len(treeLevels[len(treeLevels)-1]) > 0 {
-		var level []string
-
-		for _, expression_ := range treeLevels[len(treeLevels)-1] {
-			node := conclusions_[expression_]
-
-			if _, exists := processedProofs[node.Expression_]; exists {
+		level := make([]string, 0)
+		for _, expr := range treeLevels[len(treeLevels)-1] {
+			node := conclusions[expr]
+			if processedProofs.Has(node.Expression) {
 				continue
 			}
 
-			if node.Rule_ == "axiom" {
-				if _, exists := indices[node.Expression_]; exists {
+			if node.Rule == "axiom" {
+				if _, exists := indices[node.Expression]; exists {
 					continue
 				}
 
 				chain[nextIndex] = node
-				indices[node.Expression_] = nextIndex
+				indices[node.Expression] = nextIndex
 				nextIndex++
 			}
-			// Add dependencies
-			for _, dependency := range node.Dependencies_ {
-				level = append(level, dependency)
+
+			for _, dep := range node.Dependencies {
+				level = append(level, dep)
 			}
-			// Add express in processedProofs
-			processedProofs[node.Expression_] = false
+
+			processedProofs.Add(node.Expression)
 		}
 		treeLevels = append(treeLevels, level)
 	}
+
 	// Reverse the treeLevels slice
 	for i, j := 0, len(treeLevels)-1; i < j; i, j = i+1, j-1 {
 		treeLevels[i], treeLevels[j] = treeLevels[j], treeLevels[i]
 	}
-	// Iterate over the reversed treeLevels
+
 	for _, level := range treeLevels {
-		for _, expression_ := range level {
-			// If the expression is already indexed, continue
-			if _, exists := indices[expression_]; exists {
+		for _, expr := range level {
+			if _, exists := indices[expr]; exists {
 				continue
 			}
-			// Add the node to the chain
-			chain[nextIndex] = conclusions_[expression_]
-			indices[expression_] = nextIndex
+
+			chain[nextIndex] = conclusions[expr]
+			indices[expr] = nextIndex
 			nextIndex++
 		}
 	}
 
-	//var sb strings.Builder
-
 	for i := 1; i < nextIndex; i++ {
 		node := chain[i]
-		// Add index and point
 		s.builder.WriteString(fmt.Sprintf("%d. ", i))
-		// fmt.Fprintf(&s.ss, "%d. ", i)
 
-		if node.Rule_ == "axiom" {
+		if node.Rule == "axiom" {
 			s.builder.WriteString("axiom")
 		} else {
-			s.builder.WriteString(node.Rule_ + "(")
+			s.builder.WriteString(fmt.Sprintf("%s(", node.Rule))
+			for k := 0; k < len(node.Dependencies); k++ {
+				s.builder.WriteString(strconv.Itoa(indices[node.Dependencies[k]]))
 
-			// Add dependencies
-			for k, dependency := range node.Dependencies_ {
-				s.builder.WriteString(fmt.Sprintf("%d", indices[dependency]))
-
-				// Add a comma if this is not the last dependency
-				if k+1 != len(node.Dependencies_) {
+				if len(node.Dependencies) != k+1 {
 					s.builder.WriteString(",")
 				}
 			}
 			s.builder.WriteString(")")
 		}
-
-		s.builder.WriteString(fmt.Sprintf(": %s\n", node.Expression_))
+		s.builder.WriteString(fmt.Sprintf(": %s\n", node.Expression))
 	}
 
+	// Change variables if required
 	substitution := make(map[expression.Value]expression.Expression)
-
 	helper.GetUnification(provedTarget, proof, &substitution)
-
 	if len(substitution) == 0 {
 		return
 	}
 
 	s.builder.WriteString(fmt.Sprintf("change variables: %s\n", proof.String()))
-	for v, st := range substitution {
-		s.builder.WriteString(fmt.Sprintf("%c -> %s\n", rune(v+'A'-1), st.String())) // Преобразуем значение в символ
+	for key, value := range substitution {
+		letter, err := alphabet.GetLetter(int(key), true)
+		if err != nil {
+			fmt.Println("Error in substitution, letter set to 'X':", err)
+			letter = 'X'
+		}
+		s.builder.WriteString(fmt.Sprintf("%c \u2192 %s\n", letter, value.String()))
 	}
-
-	s.builder.WriteString(fmt.Sprintf("proved: %s\n", provedTarget.String())) */
+	s.builder.WriteString(fmt.Sprintf("proved: %s\n", provedTarget.String()))
 }
 
 func (s *Solver) ThoughtChain() string {

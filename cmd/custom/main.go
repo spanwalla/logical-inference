@@ -19,16 +19,11 @@ func main() {
 	target.MakeConst()
 
 	slv, err := solver.New(axioms, target, 60000)
-	defer func(slv *solver.Solver) {
-		err = slv.Close()
-		if err != nil {
-			fmt.Println(err)
-		}
-	}(slv)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
+	defer slv.Close()
 
 	err = slv.WriteInitialAxioms()
 	if err != nil {
