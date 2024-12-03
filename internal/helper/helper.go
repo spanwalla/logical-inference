@@ -2,10 +2,10 @@ package helper
 
 import (
 	"fmt"
+	"github.com/spanwalla/logical-inference/internal/expression"
+	"github.com/spanwalla/logical-inference/internal/pkg/queue"
+	"github.com/spanwalla/logical-inference/internal/pkg/stack"
 	"github.com/tiendc/go-deepcopy"
-	"logical-inference/internal/expression"
-	"logical-inference/internal/pkg/queue"
-	"logical-inference/internal/pkg/stack"
 )
 
 func topologicalSortUtil(v expression.Value, adj [][]expression.Value, visited []bool, s *stack.Stack[expression.Value]) {

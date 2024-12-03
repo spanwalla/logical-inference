@@ -1,8 +1,8 @@
 package expression
 
 import (
+	"github.com/spanwalla/logical-inference/internal/pkg/queue"
 	"github.com/tiendc/go-deepcopy"
-	"logical-inference/internal/pkg/queue"
 	"strings"
 )
 

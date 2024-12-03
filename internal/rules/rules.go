@@ -1,9 +1,9 @@
 package rules
 
 import (
+	"github.com/spanwalla/logical-inference/internal/expression"
+	"github.com/spanwalla/logical-inference/internal/helper"
 	"github.com/tiendc/go-deepcopy"
-	"logical-inference/internal/expression"
-	"logical-inference/internal/helper"
 )
 
 func ApplyModusPonens(lhs, rhs expression.Expression) *expression.Expression {

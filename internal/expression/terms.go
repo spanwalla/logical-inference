@@ -1,7 +1,7 @@
 package expression
 
 import (
-	"logical-inference/internal/pkg/alphabet"
+	"github.com/spanwalla/logical-inference/internal/pkg/alphabet"
 	"math"
 	"strings"
 )

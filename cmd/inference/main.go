@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
-	"logical-inference/internal/expression"
-	"logical-inference/internal/logicparser"
-	"logical-inference/internal/solver"
+	"github.com/spanwalla/logical-inference/internal/expression"
+	"github.com/spanwalla/logical-inference/internal/logicparser"
+	"github.com/spanwalla/logical-inference/internal/solver"
 	"time"
 )
 

@@ -2,8 +2,8 @@ package logicparser
 
 import (
 	"fmt"
-	"logical-inference/internal/expression"
-	"logical-inference/internal/pkg/stack"
+	"github.com/spanwalla/logical-inference/internal/expression"
+	"github.com/spanwalla/logical-inference/internal/pkg/stack"
 	"unicode"
 )
 
